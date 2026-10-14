@@ -67,4 +67,5 @@ python -m pytest -q                            # test suite
 
 ## Docs
 
-- `SQL/studyshare_schema.sql` — database schema (10 project tables)
+- `SQL/studyshare_schema.sql` — database schema, SQLite dialect
+- `SQL/studyshare_schema_mysql.sql` — same schema for MySQL/MariaDB (phpMyAdmin import)
