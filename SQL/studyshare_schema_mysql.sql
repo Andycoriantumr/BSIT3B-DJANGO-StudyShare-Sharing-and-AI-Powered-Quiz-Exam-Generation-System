@@ -27,7 +27,7 @@ CREATE TABLE `auth_user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `tblinfo` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
   `age` INT UNSIGNED NOT NULL,
   `address` VARCHAR(255) NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE `tblinfo` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `users_profile` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `role` VARCHAR(20) NOT NULL,
   `created_at` DATETIME NOT NULL,
   `updated_at` DATETIME NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE `users_profile` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_subject` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(120) NOT NULL UNIQUE,
   `code` VARCHAR(30) NOT NULL,
   `description` TEXT NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE `notes_subject` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_note` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `title` VARCHAR(255) NOT NULL,
   `subject` VARCHAR(120) NOT NULL,
   `instructor` VARCHAR(120) NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE `notes_note` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_noterating` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `note_id` BIGINT NOT NULL,
   `user_id` INT NOT NULL,
   `score` SMALLINT UNSIGNED NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE `notes_noterating` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_notereport` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `note_id` BIGINT NOT NULL,
   `reporter_id` INT NOT NULL,
   `reason` VARCHAR(20) NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE `notes_notereport` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_quizset` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `note_id` BIGINT NOT NULL,
   `created_by_id` INT NOT NULL,
   `title` VARCHAR(255) NOT NULL,
@@ -137,7 +137,7 @@ CREATE TABLE `notes_quizset` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_question` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `quiz_id` BIGINT NOT NULL,
   `question_type` VARCHAR(20) NOT NULL,
   `question_text` TEXT NOT NULL,
@@ -150,7 +150,7 @@ CREATE TABLE `notes_question` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `notes_quizattempt` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `quiz_id` BIGINT NOT NULL,
   `taker_id` INT NOT NULL,
   `score` INT UNSIGNED NOT NULL,
