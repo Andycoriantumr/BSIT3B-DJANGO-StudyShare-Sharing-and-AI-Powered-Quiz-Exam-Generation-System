@@ -1,3 +1,6 @@
-Django==5.0.14
-mysqlclient==2.2.8
+Django==5.2.6
 openpyxl==3.1.5
+# Optional: only needed for MySQL deployments
+# mysqlclient==2.2.8
+# Optional: better PDF text extraction for quiz generation
+# pypdf>=4.0.0

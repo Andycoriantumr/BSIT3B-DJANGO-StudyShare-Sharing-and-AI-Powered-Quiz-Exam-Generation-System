@@ -1,26 +1,35 @@
 {% extends "theme/base.html" %}
 {% block content %}
-<div class="container-xl">
-  <div class="page-header d-print-none" aria-label="Page header">
-    <div class="container-xl">
-      <div class="row align-items-center">
-        <div class="col">
-          <div class="page-pretitle">Overview</div>
-          <div class="d-flex align-items-center gap-3 flex-wrap d-none d-md-flex">
-            <h2 class="page-title mb-0">Dashboard</h2>
-          </div>
-          <h2 class="page-title mb-0 d-md-none">Dashboard</h2>
-        </div>
-      </div>
+<div class="page-header d-print-none">
+  <div class="row align-items-center">
+    <div class="col"><div class="page-pretitle">Overview — {{ user_role|title|default:"Student" }}</div><h2 class="page-title">Dashboard</h2></div>
+    <div class="col-auto d-flex gap-2">
+      <a href="{% url 'notes:note_create' %}" class="btn btn-primary">Upload Notes</a>
+      <a href="{% url 'notes:note_list' %}" class="btn btn-outline-primary">Browse Notes</a>
     </div>
   </div>
-  <br>
+</div>
+<br>
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">My uploads</div><div class="h1">{{ stats.my_notes }}</div><a href="{% url 'notes:note_list' %}?mine=1" class="btn btn-sm btn-ghost-primary">View mine</a></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Quizzes taken</div><div class="h1">{{ stats.my_attempts }}</div><a href="{% url 'notes:my_progress' %}" class="btn btn-sm btn-ghost-primary">Track progress</a></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">My avg score</div><div class="h1">{{ stats.my_avg }}%</div><a href="{% url 'notes:my_progress' %}" class="btn btn-sm btn-ghost-primary">View scores</a></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Shared notes</div><div class="h1">{{ stats.notes_total }}</div><a href="{% url 'notes:note_list' %}" class="btn btn-sm btn-ghost-primary">Search notes</a></div></div></div>
+</div>
 
-  <div class="card">
-    <div class="card-body text-muted">
-      Dashboard
-    </div>
-  </div>
+{% if can_moderate %}
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-3"><div class="card border-warning"><div class="card-body"><div class="text-muted">Pending review</div><div class="h1">{{ stats.pending_notes }}</div><a href="{% url 'notes:moderation_queue' %}" class="btn btn-sm btn-warning">Review materials</a></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card border-danger"><div class="card-body"><div class="text-muted">Pending reports</div><div class="h1">{{ stats.pending_reports }}</div><a href="{% url 'notes:report_list' %}" class="btn btn-sm btn-danger">Monitor reports</a></div></div></div>
+  {% if can_admin %}
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Users</div><div class="h1">Manage</div><a href="{% url 'users:user_list' %}" class="btn btn-sm btn-ghost-primary">Manage users</a></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Analytics</div><div class="h1">View</div><a href="{% url 'notes:system_analytics' %}" class="btn btn-sm btn-ghost-primary">System analytics</a></div></div></div>
+  {% endif %}
+</div>
+{% endif %}
 
+<div class="row">
+  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">Recent notes</h3></div><div class="list-group list-group-flush">{% for n in recent_notes %}<a href="{% url 'notes:note_detail' n.pk %}" class="list-group-item"><strong>{{ n.title }}</strong><span class="text-muted small d-block">{{ n.subject }} · {{ n.topic }} · {{ n.status }}</span></a>{% empty %}<div class="list-group-item text-muted">No notes yet.</div>{% endfor %}</div></div></div>
+  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">My recent quiz attempts</h3></div><div class="list-group list-group-flush">{% for a in my_recent_attempts %}<a href="{% url 'notes:attempt_detail' a.pk %}" class="list-group-item d-flex justify-content-between"><span>{{ a.quiz.title }}</span><span class="badge bg-green-lt">{{ a.score }}/{{ a.total }} ({{ a.percentage }}%)</span></a>{% empty %}<div class="list-group-item text-muted">No attempts yet. Open a quiz and click Take Quiz.</div>{% endfor %}</div></div></div>
 </div>
 {% endblock %}

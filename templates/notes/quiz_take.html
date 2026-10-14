@@ -1,0 +1,54 @@
+{% extends "theme/base.html" %}
+{% block content %}
+<nav aria-label="breadcrumb" class="d-print-none"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'notes:quiz_detail' quiz.pk %}">{{ quiz.title|truncatechars:30 }}</a></li>
+  <li class="breadcrumb-item active">Take Quiz</li>
+</ol></nav>
+<div class="page-header"><div class="row"><div class="col"><div class="page-pretitle">Take Quiz — {{ quiz.note.title }}</div><h2 class="page-title">{{ quiz.title }}</h2><div class="text-muted">Answer all auto-graded questions. Short/essay are for practice (not scored).</div></div></div></div>
+<div class="card mt-2 mb-3"><div class="card-body py-2 d-flex align-items-center gap-2">
+  <span class="text-muted small" id="takeProgressLabel">0 of {{ quiz.questions.count }} answered</span>
+  <div class="progress flex-fill"><div class="progress-bar" id="takeProgressBar" style="width:0%"></div></div>
+</div></div>
+<form method="POST" id="takeForm" onsubmit="return confirm('Submit your answers? You cannot change them after submitting.');"><div class="card"><div class="card-body">{% csrf_token %}
+{% for q in quiz.questions.all %}
+<div class="mb-4" data-question><p class="fw-bold">Q{{ forloop.counter }} of {{ quiz.questions.count }}. {{ q.question_text }} <span class="badge bg-blue-lt">{{ q.get_question_type_display }}</span></p>
+{% if q.question_type == 'mcq' %}{% for opt in q.options %}<label class="form-check"><input type="radio" name="q_{{ q.id }}" value="{{ opt }}" class="form-check-input" required> <span class="form-check-label">{{ opt }}</span></label>{% endfor %}
+{% elif q.question_type == 'true_false' %}<label class="form-check"><input type="radio" name="q_{{ q.id }}" value="True" class="form-check-input" required> <span class="form-check-label">True</span></label><label class="form-check"><input type="radio" name="q_{{ q.id }}" value="False" class="form-check-input"> <span class="form-check-label">False</span></label>
+{% elif q.question_type == 'short_answer' %}<textarea name="q_{{ q.id }}" class="form-control" rows="2" placeholder="Your answer..."></textarea>
+{% else %}<textarea name="q_{{ q.id }}" class="form-control" rows="4" placeholder="Your essay..."></textarea>{% endif %}
+</div><hr>
+{% endfor %}
+</div>
+<div class="card-footer sticky-bottom bg-white border-top d-flex align-items-center gap-2" style="bottom:0; z-index:10">
+  <span class="text-muted small flex-fill" id="takeFooterLabel">Check your answers, then submit.</span>
+  <button class="btn btn-primary" type="submit">Submit Answers & View Score</button>
+</div>
+</div></form>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function() {
+  const form = document.getElementById('takeForm');
+  const total = document.querySelectorAll('[data-question]').length;
+  const bar = document.getElementById('takeProgressBar');
+  const label = document.getElementById('takeProgressLabel');
+  const footer = document.getElementById('takeFooterLabel');
+  function update() {
+    let answered = 0;
+    document.querySelectorAll('[data-question]').forEach(function(block) {
+      if (block.querySelector('input[type=radio]:checked')) { answered++; return; }
+      const ta = block.querySelector('textarea');
+      if (ta && ta.value.trim()) { answered++; }
+    });
+    const pct = total ? Math.round(answered / total * 100) : 0;
+    bar.style.width = pct + '%';
+    label.textContent = answered + ' of ' + total + ' answered';
+    footer.textContent = answered === total ? 'All questions answered — ready to submit.' : (total - answered) + ' question(s) left (short/essay optional).';
+  }
+  form.addEventListener('change', update);
+  form.addEventListener('input', update);
+  update();
+})();
+</script>
+{% endblock %}

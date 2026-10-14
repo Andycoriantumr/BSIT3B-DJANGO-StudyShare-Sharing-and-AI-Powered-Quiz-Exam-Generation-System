@@ -6,8 +6,8 @@
           <i class="fa-solid fa-shield-halved"></i>
         </span>
         <span class="lh-1">
-          <span class="dh-brand-name">Project<span class="text-warning">V3</span></span>
-          <span class="dh-brand-sub">Management System</span>
+          <span class="dh-brand-name">Study<span class="text-warning">Share</span></span>
+          <span class="dh-brand-sub">Notes + AI Quiz</span>
         </span>
       </a>
     </div>
@@ -29,7 +29,7 @@
 
         <li class="nav-item">
           <span class="dh-nav-section">
-            Menu
+            Menu — {{ user_role|default:"student"|title }}
           </span>
         </li>
         <li class="nav-item mb-1">
@@ -42,29 +42,85 @@
         </li>
 
         <li class="nav-item">
-          <a class="nav-link {% if request.resolver_match.app_name == 'users' %}active{% endif %}" href="{% url 'users:user_list' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block">
-              <i class="nav-icon fas fa-users"></i>
-            </span>
-            <span class="nav-link-title">Users</span>
+          <span class="dh-nav-section">Student</span>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.app_name == 'notes' and request.resolver_match.url_name == 'note_list' %}active{% endif %}" href="{% url 'notes:note_list' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-book-open"></i></span>
+            <span class="nav-link-title">Browse Notes</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{% url 'notes:note_create' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-upload"></i></span>
+            <span class="nav-link-title">Upload Notes</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'exam_builder' or request.resolver_match.url_name == 'exam_list' %}active{% endif %}" href="{% url 'notes:exam_builder' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-magic"></i></span>
+            <span class="nav-link-title">Exam Generator</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'my_progress' %}active{% endif %}" href="{% url 'notes:my_progress' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-chart-line"></i></span>
+            <span class="nav-link-title">My Progress</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'report_list' %}active{% endif %}" href="{% url 'notes:report_list' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-flag"></i></span>
+            <span class="nav-link-title">My Reports</span>
           </a>
         </li>
 
+        {% if can_moderate %}
+        <li class="nav-item">
+          <span class="dh-nav-section">Instructor / Moderator</span>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'moderation_queue' %}active{% endif %}" href="{% url 'notes:moderation_queue' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-shield-alt"></i></span>
+            <span class="nav-link-title">Review Materials</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'subject_list' %}active{% endif %}" href="{% url 'notes:subject_list' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-tags"></i></span>
+            <span class="nav-link-title">Manage Subjects</span>
+          </a>
+        </li>
+        {% endif %}
+
+        {% if can_admin %}
+        <li class="nav-item">
+          <span class="dh-nav-section">Administrator</span>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.app_name == 'users' %}active{% endif %}" href="{% url 'users:user_list' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-users"></i></span>
+            <span class="nav-link-title">Manage Users</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'system_analytics' %}active{% endif %}" href="{% url 'notes:system_analytics' %}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-chart-bar"></i></span>
+            <span class="nav-link-title">Analytics</span>
+          </a>
+        </li>
         <li class="nav-item">
           <a class="nav-link {% if request.resolver_match.app_name == 'info' %}active{% endif %}" href="{% url 'info:info_list' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block">
-              <i class="nav-icon fas fa-address-card"></i>
-            </span>
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-address-card"></i></span>
             <span class="nav-link-title">Info</span>
           </a>
         </li>
+        {% endif %}
 
         {% if user.is_authenticated %}
         <li class="nav-item d-lg-none">
           <a class="nav-link" href="{% url 'logout' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block">
-              <i class="nav-icon fas fa-sign-out-alt"></i>
-            </span>
+            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-sign-out-alt"></i></span>
             <span class="nav-link-title">Logout</span>
           </a>
         </li>
@@ -72,13 +128,11 @@
 
         <li class="nav-item mt-auto dh-nav-sidebar-footer">
           <div class="dh-user-card">
-            <a href="{% url 'users:user_list' %}" class="d-flex align-items-center gap-2 text-decoration-none text-white min-w-0 w-100">
+            <a href="{% url 'notes:my_progress' %}" class="d-flex align-items-center gap-2 text-decoration-none text-white min-w-0 w-100">
               <span class="dh-avatar">{{ user.username|first|upper }}</span>
               <span class="min-w-0 flex-grow-1">
                 <span class="dh-user-name">{{ user.username }}</span>
-                <span class="dh-user-role">
-                  {% if user.is_superuser %}Administrator{% elif user.is_authenticated %}Instructor{% endif %}
-                </span>
+                <span class="dh-user-role">{{ user_role|default:"student"|title }}</span>
               </span>
             </a>
             {% if user.is_authenticated %}

@@ -34,6 +34,19 @@
         {% endif %}
 
         <div class="page-wrapper">
+            {% if request.user.is_authenticated %}
+            <header class="navbar navbar-expand-md d-print-none">
+              <div class="container-xl d-flex gap-2 align-items-center">
+                <form action="{% url 'notes:note_list' %}" method="GET" class="d-flex flex-grow-1" style="max-width:480px">
+                  <div class="input-icon w-100">
+                    <span class="input-icon-addon"><i class="fas fa-search"></i></span>
+                    <input type="text" name="q" class="form-control" placeholder="Search notes, topics, instructors..." value="{{ request.GET.q|default:'' }}">
+                  </div>
+                </form>
+                <span class="ms-auto badge bg-blue-lt">{{ user_role|default:"student"|title }}</span>
+              </div>
+            </header>
+            {% endif %}
             <div class="page-body">
                 <div class="container-xl">
                     {% block content %}

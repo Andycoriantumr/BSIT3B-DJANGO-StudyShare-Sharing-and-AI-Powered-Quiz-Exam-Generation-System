@@ -1,0 +1,94 @@
+{% extends "theme/base.html" %}
+{% block content %}
+<style>
+@media print {
+  .exam-fill, .exam-fill:focus {
+    border: none !important;
+    border-bottom: 1px solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  .exam-fill::placeholder { color: transparent; }
+}
+</style>
+{% if quiz.is_exam %}
+<nav aria-label="breadcrumb" class="d-print-none"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'notes:exam_list' %}">Exams</a></li>
+  <li class="breadcrumb-item active">{{ quiz.title|truncatechars:40 }}</li>
+</ol></nav>
+<a href="{% url 'notes:exam_list' %}" class="btn btn-ghost-secondary btn-sm mb-2">&larr; Back to exams</a>
+{% else %}
+<nav aria-label="breadcrumb" class="d-print-none"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'notes:note_detail' quiz.note.pk %}">{{ quiz.note.title|truncatechars:30 }}</a></li>
+  <li class="breadcrumb-item active">{{ quiz.title|truncatechars:40 }}</li>
+</ol></nav>
+<a href="{% url 'notes:note_detail' quiz.note.pk %}" class="btn btn-ghost-secondary btn-sm mb-2">&larr; Back to note</a>
+{% endif %}
+<div class="page-header d-print-none"><div class="row align-items-center"><div class="col">
+<div class="page-pretitle">{% if quiz.is_exam %}Automated Exam · {{ quiz.exam_subject }}{% else %}{{ quiz.note.subject }} · {{ quiz.note.title }}{% endif %}</div>
+<h2 class="page-title">{{ quiz.title }} {% if quiz.is_exam %}<span class="badge bg-purple-lt">Exam</span>{% endif %}</h2>
+<div class="text-muted">{{ quiz.questions.count }} questions · {{ quiz.get_question_type_display }} · provider: {{ quiz.provider }} · by {{ quiz.created_by.username }}</div>
+{% if quiz.is_exam and source_notes %}<div class="text-muted small mt-1">Sources ({{ source_notes|length }}): {% for n in source_notes %}<a href="{% url 'notes:note_detail' n.pk %}">{{ n.title }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+</div>
+<div class="col-auto d-flex gap-2 flex-wrap">
+<a href="{% url 'notes:quiz_take' quiz.pk %}" class="btn btn-primary">Take Quiz (scored)</a>
+<a href="{% url 'notes:my_progress' %}" class="btn btn-outline-primary">My Scores</a>
+<button class="btn btn-outline-secondary" onclick="window.print()">Print Exam / Save PDF</button>
+<form method="POST" action="{% url 'notes:quiz_delete' quiz.pk %}" onsubmit="return confirm('Delete this quiz?')">{% csrf_token %}<button class="btn btn-outline-danger">Delete</button></form>
+</div></div></div>
+<br>
+{% if quiz.is_exam %}
+<div class="card mb-3 d-print-block"><div class="card-body">
+<div class="row g-2 align-items-end mb-2">
+<div class="col-md-6"><label class="form-label">Name</label><input type="text" name="student_name" class="form-control exam-fill" placeholder="Write your full name" autocomplete="off"></div>
+<div class="col-md-3"><label class="form-label">Date</label><input type="text" name="exam_date" class="form-control exam-fill" placeholder="M/D/YYYY" autocomplete="off"></div>
+<div class="col-md-3"><label class="form-label">Score</label><div class="input-group"><input type="text" name="exam_score" class="form-control exam-fill" placeholder="—" autocomplete="off"><span class="input-group-text">/ {{ quiz.questions.count }}</span></div></div>
+</div>
+<div class="text-muted small">Instructions: Choose the best answer for multiple choice. Write T/F for true/false. Show your work for short answer and essay. Detach the answer key before distributing.</div>
+</div></div>
+{% else %}
+<div class="card mb-3 d-print-block"><div class="card-body">
+<div class="row g-2 align-items-end">
+<div class="col-md-6"><label class="form-label">Name</label><input type="text" name="student_name" class="form-control exam-fill" placeholder="Write your full name" autocomplete="off"></div>
+<div class="col-md-3"><label class="form-label">Date</label><input type="text" name="exam_date" class="form-control exam-fill" placeholder="M/D/YYYY" autocomplete="off"></div>
+<div class="col-md-3"><label class="form-label">Score</label><div class="input-group"><input type="text" name="exam_score" class="form-control exam-fill" placeholder="—" autocomplete="off"><span class="input-group-text">/ {{ quiz.questions.count }}</span></div></div>
+</div>
+</div></div>
+{% endif %}
+{% if attempts %}
+<div class="card mb-3"><div class="card-header"><h3 class="card-title">My attempts</h3></div><div class="list-group list-group-flush">{% for a in attempts %}<a href="{% url 'notes:attempt_detail' a.pk %}" class="list-group-item d-flex justify-content-between"><span>{{ a.submitted_at|date:"M d, Y H:i" }}</span><span class="badge bg-green-lt">{{ a.score }}/{{ a.total }} ({{ a.percentage }}%)</span></a>{% endfor %}</div></div>
+{% endif %}
+{% if all_attempts %}
+<div class="card mb-3"><div class="card-header"><h3 class="card-title">All attempts (moderator view)</h3></div><div class="list-group list-group-flush">{% for a in all_attempts %}<div class="list-group-item d-flex justify-content-between"><span>{{ a.taker.username }} · {{ a.submitted_at|date:"M d, H:i" }}</span><span class="badge bg-blue-lt">{{ a.score }}/{{ a.total }} ({{ a.percentage }}%)</span></div>{% endfor %}</div></div>
+{% endif %}
+{% for q in quiz.questions.all %}
+<div class="card mb-3">
+  <div class="card-header"><span class="badge bg-secondary-lt me-2">Q{{ forloop.counter }}</span><span class="badge bg-blue-lt">{{ q.get_question_type_display }}</span></div>
+  <div class="card-body">
+    <p class="fw-semibold">{{ q.question_text }}</p>
+    {% if q.question_type == 'mcq' %}
+    <ol type="A" class="mb-2">{% for opt in q.options %}<li class="mb-1">{{ opt }}</li>{% endfor %}</ol>
+    {% elif q.question_type == 'true_false' %}
+    <div class="d-flex gap-2 mb-2"><span class="badge bg-light text-dark border">True</span><span class="badge bg-light text-dark border">False</span><span class="text-muted small">Circle one</span></div>
+    {% elif q.question_type == 'short_answer' %}
+    <div class="border rounded p-3 mb-2" style="min-height:70px"></div>
+    {% else %}
+    <div class="border rounded p-3 mb-2" style="min-height:140px"></div>
+    {% endif %}
+    {% if show_answers %}
+    <details><summary class="text-primary" style="cursor:pointer">Show answer / explanation</summary>
+      <div class="mt-2 p-2 bg-green-lt rounded">{% if q.correct_answer %}<strong>Answer:</strong> {{ q.correct_answer }}<br>{% endif %}{% if q.explanation %}<span class="text-muted">{{ q.explanation }}</span>{% endif %}</div>
+    </details>
+    {% else %}
+    <div class="alert alert-info py-2 mb-0"><i class="fas fa-lock me-1"></i>Answers unlock after you submit this quiz via <a href="{% url 'notes:quiz_take' quiz.pk %}" class="alert-link">Take Quiz</a>.</div>
+    {% endif %}
+  </div>
+</div>
+{% empty %}<div class="card"><div class="card-body text-muted">No questions in this quiz.</div></div>{% endfor %}
+{% if quiz.is_exam and show_answers %}
+<div class="card mt-3" style="break-before:page"><div class="card-header"><h3 class="card-title">Answer Key — for instructor only (do not distribute)</h3></div><div class="table-responsive"><table class="table card-table"><thead><tr><th>#</th><th>Type</th><th>Correct answer</th><th>Explanation</th></tr></thead><tbody>{% for q in quiz.questions.all %}<tr><td>{{ forloop.counter }}</td><td>{{ q.get_question_type_display }}</td><td>{{ q.correct_answer|default:"—" }}</td><td class="text-muted">{{ q.explanation|truncatewords:20 }}</td></tr>{% endfor %}</tbody></table></div></div>
+{% endif %}
+{% endblock %}

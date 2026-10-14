@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Django
+*.log
+media/
+staticfiles/
+
+# Environment / secrets (never commit API keys)
+.env
+.venv/
+venv/
+env/
+
+# Testing / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# OS / editors
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp

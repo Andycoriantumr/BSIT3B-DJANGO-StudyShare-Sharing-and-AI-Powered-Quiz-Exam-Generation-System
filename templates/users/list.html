@@ -42,7 +42,7 @@
 <br>
 
 <!-- SEARCH BAR -->
-<form method="GET" class="mb-3">
+<form method="GET" class="mb-3 d-flex gap-2 flex-wrap">
     <div class="input-group" style="max-width: 400px;">
         <span class="input-group-text"><i class="ti ti-search"></i></span>
         <input type="text"
@@ -55,6 +55,12 @@
         {% endif %}
         <button type="submit" class="btn btn-primary">Search</button>
     </div>
+    <select name="role" class="form-select" style="max-width:220px" onchange="this.form.submit()">
+      <option value="">All roles</option>
+      <option value="student" {% if role_filter == 'student' %}selected{% endif %}>Student</option>
+      <option value="instructor" {% if role_filter == 'instructor' %}selected{% endif %}>Instructor / Moderator</option>
+      <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Administrator</option>
+    </select>
 </form>
 
 <div id="userAlert" class="alert alert-info alert-dismissible fade {% if not messages %}d-none{% endif %}{% if messages %}show{% endif %}" role="alert">
@@ -117,11 +123,15 @@
                         </td>
                         <td>
                             {% if u.is_superuser %}
-                            <span class="badge bg-purple-lt text-purple">Superuser</span>
+                            <span class="badge bg-purple-lt text-purple">Administrator</span>
+                            {% elif u.profile.role == 'admin' %}
+                            <span class="badge bg-purple-lt text-purple">Administrator</span>
+                            {% elif u.profile.role == 'instructor' %}
+                            <span class="badge bg-warning-lt text-warning">Instructor</span>
                             {% elif u.is_staff %}
                             <span class="badge bg-warning-lt text-warning">Staff</span>
                             {% else %}
-                            <span class="badge bg-secondary-lt text-secondary">User</span>
+                            <span class="badge bg-secondary-lt text-secondary">Student</span>
                             {% endif %}
                         </td>
                         <td>
@@ -138,6 +148,7 @@
                                    data-email="{{ u.email }}"
                                    data-active="{{ u.is_active|yesno:'true,false' }}"
                                    data-staff="{{ u.is_staff|yesno:'true,false' }}"
+                                   data-role="{{ u.profile.role }}"
                                    title="Edit">
                                     <i class="ti ti-pencil text-primary"></i>
                                 </a>
@@ -252,6 +263,11 @@
                                 <input class="form-check-input" type="checkbox" name="is_staff" id="edit_is_staff">
                                 <label class="form-check-label" for="edit_is_staff">Staff</label>
                             </div>
+                            <select name="role" id="edit_role" class="form-select mt-2">
+                              <option value="student">Student</option>
+                              <option value="instructor">Instructor / Moderator</option>
+                              <option value="admin">Administrator</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -341,6 +357,7 @@
             document.getElementById('edit_email').value       = btn.dataset.email;
             document.getElementById('edit_is_active').checked = btn.dataset.active === 'true';
             document.getElementById('edit_is_staff').checked  = btn.dataset.staff === 'true';
+            document.getElementById('edit_role').value = btn.dataset.role || 'student';
         } else {
             modalTitle.textContent = 'Add User';
             document.getElementById('edit_id').value = '';

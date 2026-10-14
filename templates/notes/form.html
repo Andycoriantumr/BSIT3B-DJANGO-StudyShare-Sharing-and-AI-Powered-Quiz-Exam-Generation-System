@@ -1,0 +1,25 @@
+{% extends "theme/base.html" %}
+{% block content %}
+<div class="page-header d-print-none"><div class="row align-items-center"><div class="col"><div class="page-pretitle">StudyShare</div><h2 class="page-title">{% if mode == 'edit' %}Edit Note{% else %}Upload Notes{% endif %}</h2>{% if mode == 'create' and user_role == 'student' %}<div class="text-muted small">Student uploads go to Pending Review before appearing to everyone.</div>{% endif %}</div></div></div>
+<br>
+<div class="card"><div class="card-body">
+<form method="POST" enctype="multipart/form-data">{% csrf_token %}
+  <div class="row g-3">
+    <div class="col-md-12">{{ form.title.label_tag }}{{ form.title }}{% if form.title.errors %}<div class="text-danger small">{{ form.title.errors }}</div>{% endif %}</div>
+    <div class="col-md-4"><label class="form-label" for="id_subject">Subject</label>{{ form.subject }}<datalist id="subject-list">{% for s in subjects %}<option value="{{ s.name }}">{% endfor %}</datalist>{% if form.subject.errors %}<div class="text-danger small">{{ form.subject.errors }}</div>{% endif %}<div class="form-hint">Choose from <a href="{% url 'notes:subject_list' %}">managed subjects</a> or type new.</div></div>
+    <div class="col-md-4">{{ form.instructor.label_tag }}{{ form.instructor }}</div>
+    <div class="col-md-4">{{ form.school_year.label_tag }}{{ form.school_year }}</div>
+    <div class="col-md-12">{{ form.topic.label_tag }}{{ form.topic }}</div>
+    <div class="col-md-12">{{ form.description.label_tag }}{{ form.description }}</div>
+    <div class="col-md-12">{{ form.content.label_tag }}{{ form.content }}<div class="form-hint">Tip: paste enough text for better AI questions. .txt uploads are also read automatically.</div></div>
+    <div class="col-md-8"><label class="form-label">File (pdf, docx, txt, md, png, jpg)</label>{{ form.file }}{% if form.file.errors %}<div class="text-danger small">{{ form.file.errors }}</div>{% endif %}{% if note.file %}<div class="small mt-1">Current: <a href="{{ note.file.url }}">{{ note.file.name }}</a></div>{% endif %}</div>
+    <div class="col-md-4"><label class="form-check mt-4">{{ form.is_public }} <span class="form-check-label">Public (visible to all students)</span></label></div>
+  </div>
+  {% if form.non_field_errors %}<div class="alert alert-danger mt-3">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-primary" type="submit">{% if mode == 'edit' %}Save Changes{% else %}Upload Note{% endif %}</button>
+    <a href="{% url 'notes:note_list' %}" class="btn btn-ghost-secondary">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

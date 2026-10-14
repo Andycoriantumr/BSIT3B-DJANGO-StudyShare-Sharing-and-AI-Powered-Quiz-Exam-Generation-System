@@ -1,0 +1,12 @@
+{% extends "theme/base.html" %}
+{% block content %}
+<div class="page-header"><div class="row"><div class="col"><div class="page-pretitle">Student</div><h2 class="page-title">My Progress — Scores & Activity</h2></div></div></div>
+<br>
+<div class="row row-cards mb-3">
+<div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Quizzes taken</div><div class="h1">{{ total_taken }}</div></div></div></div>
+<div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Average score</div><div class="h1">{{ avg_score }}%</div></div></div></div>
+<div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Notes uploaded</div><div class="h1">{{ notes_uploaded }}</div></div></div></div>
+<div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Ratings given</div><div class="h1">{{ ratings_given }}</div><div class="text-muted small">Quizzes created: {{ quizzes_created }}{% if best %} · Best: {{ best.percentage }}%{% endif %}</div></div></div></div>
+</div>
+<div class="card"><div class="card-header"><h3 class="card-title">Quiz attempts</h3></div><div class="table-responsive"><table class="table card-table"><thead><tr><th>Date</th><th>Quiz</th><th>Note</th><th>Score</th><th></th></tr></thead><tbody>{% for a in attempts %}<tr><td class="text-muted">{{ a.submitted_at|date:"M d, Y H:i" }}</td><td>{{ a.quiz.title }}</td><td class="text-muted">{{ a.quiz.note.title }}</td><td><span class="badge bg-green-lt">{{ a.score }}/{{ a.total }} ({{ a.percentage }}%)</span></td><td><a href="{% url 'notes:attempt_detail' a.pk %}" class="btn btn-sm btn-ghost-secondary">Review</a></td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">No attempts yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}
