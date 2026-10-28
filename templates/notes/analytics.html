@@ -32,19 +32,27 @@ document.addEventListener("DOMContentLoaded", function () {
   const att = JSON.parse(document.getElementById("chart-attempts-data").textContent);
   if (document.getElementById("chart-subjects")) {
     new ApexCharts(document.getElementById("chart-subjects"), {
-      chart: { type: "bar", height: 260, animations: { enabled: false } },
+      chart: { type: "bar", height: 260, background: "transparent", toolbar: { show: false }, animations: { enabled: false }, foreColor: "#9a9a9a" },
+      theme: { mode: "dark" },
+      colors: ["#2e6db4"],
       series: [{ name: "Notes", data: sub.values }],
-      xaxis: { categories: sub.labels },
+      xaxis: { categories: sub.labels, axisBorder: { color: "#333333" }, axisTicks: { color: "#333333" } },
+      grid: { borderColor: "rgba(255,255,255,0.08)" },
       dataLabels: { enabled: false },
+      tooltip: { theme: "dark" },
     }).render();
   }
   if (document.getElementById("chart-attempts")) {
     new ApexCharts(document.getElementById("chart-attempts"), {
-      chart: { type: "area", height: 260, animations: { enabled: false } },
+      chart: { type: "area", height: 260, background: "transparent", toolbar: { show: false }, animations: { enabled: false }, foreColor: "#9a9a9a" },
+      theme: { mode: "dark" },
+      colors: ["#2e6db4"],
       series: [{ name: "Attempts", data: att.values }],
-      xaxis: { categories: att.labels },
+      xaxis: { categories: att.labels, axisBorder: { color: "#333333" }, axisTicks: { color: "#333333" } },
+      grid: { borderColor: "rgba(255,255,255,0.08)" },
       dataLabels: { enabled: false },
       stroke: { curve: "smooth", width: 2 },
+      tooltip: { theme: "dark" },
     }).render();
   }
 });

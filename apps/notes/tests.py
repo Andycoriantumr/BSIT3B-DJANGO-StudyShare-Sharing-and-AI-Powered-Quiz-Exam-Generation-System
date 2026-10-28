@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.notes.models import Note, NoteRating, NoteReport, Question, QuizAttempt, QuizSet, Subject
 from apps.notes.services import build_exam_source, generate_quiz
@@ -19,6 +19,7 @@ def _set_role(user, role):
     return profile
 
 
+@override_settings(GEMINI_API_KEY='', OPENAI_API_KEY='', OPENROUTER_API_KEY='')
 class NotesModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='student1', password='pass12345')
@@ -236,6 +237,7 @@ class QuizTakeTests(TestCase):
         self.assertContains(resp, 'Q1')
 
 
+@override_settings(GEMINI_API_KEY='', OPENAI_API_KEY='', OPENROUTER_API_KEY='')
 class AIProviderTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='aiuser', password='pass12345')

@@ -1,35 +1,92 @@
-{% extends "theme/base.html" %}
+{% extends "theme/chat_base.html" %}
+
+{% block title %}StudyShare — What's on the agenda?{% endblock %}
+
 {% block content %}
-<div class="page-header d-print-none">
-  <div class="row align-items-center">
-    <div class="col"><div class="page-pretitle">Overview — {{ user_role|title|default:"Student" }}</div><h2 class="page-title">Dashboard</h2></div>
-    <div class="col-auto d-flex gap-2">
-      <a href="{% url 'notes:note_create' %}" class="btn btn-primary">Upload Notes</a>
-      <a href="{% url 'notes:note_list' %}" class="btn btn-outline-primary">Browse Notes</a>
+<main class="ss-main">
+  <section class="ss-hero">
+    <div class="ss-hero-inner">
+      <h1 class="ss-greeting">What's on the agenda today?</h1>
+      <p class="ss-subgreeting">Ask about your notes, generate a quiz, or search what your classmates shared.</p>
+
+      <p class="ss-ai-status ss-ai-status--{{ ai_provider }}"
+         title="{% if ai_online %}{{ ai_provider_label }} is powering StudyShare AI{% else %}Add an API key to .env for full AI answers{% endif %}">
+        <span class="ss-ai-dot" aria-hidden="true"></span>
+        {% if ai_online %}{{ ai_provider_label }} connected{% else %}Offline note assistant{% endif %}
+      </p>
+
+      <form class="ss-prompt" id="ssPromptForm" action="{% url 'chat:start' %}" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="think" value="0" data-ss-think-input>
+        <a class="ss-prompt-plus" href="{% url 'notes:note_create' %}" title="Upload notes" aria-label="Upload notes">
+          <svg class="ss-icon"><use href="#icon-plus"></use></svg>
+        </a>
+        <input class="ss-prompt-input" id="ssPromptInput" type="text" name="content"
+               placeholder="Ask StudyShare" autocomplete="off"
+               aria-label="Ask StudyShare">
+        <div class="ss-prompt-tools">
+          <button class="ss-think" type="button" data-ss-think aria-pressed="false" title="Think before answering">
+            <svg class="ss-icon"><use href="#icon-brain"></use></svg>
+            <span>Think</span>
+          </button>
+          <button class="ss-icon-btn ss-mic" type="button" data-ss-mic title="Voice input" aria-label="Voice input">
+            <svg class="ss-icon"><use href="#icon-mic"></use></svg>
+          </button>
+          <button class="ss-send" type="submit" title="Send message" aria-label="Send">
+            <svg class="ss-icon"><use href="#icon-arrow-up"></use></svg>
+          </button>
+        </div>
+      </form>
+
+      <div class="ss-suggestions">
+        <button class="ss-suggestion" type="button" data-ss-prefill="Explain the key concepts in my notes">
+          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-sparkles"></use></svg></span>
+          <span>Explain a topic from my notes</span>
+          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
+        </button>
+        <a class="ss-suggestion" href="{% url 'notes:exam_builder' %}">
+          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-pen"></use></svg></span>
+          <span>Create a quiz from your notes</span>
+          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
+        </a>
+        <a class="ss-suggestion" href="{% url 'notes:note_list' %}">
+          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-globe"></use></svg></span>
+          <span>Search shared notes and topics</span>
+          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
+        </a>
+      </div>
+
+      <div class="ss-snapshot" aria-label="Your activity">
+        <span class="ss-snapshot-item"><strong>{{ stats.my_notes }}</strong> uploads</span>
+        <span class="ss-snapshot-dot" aria-hidden="true"></span>
+        {% if can_moderate %}
+        <span class="ss-snapshot-item"><strong>{{ stats.quizzes_total }}</strong> quizzes generated</span>
+        {% else %}
+        <span class="ss-snapshot-item"><strong>{{ stats.my_attempts }}</strong> quizzes taken</span>
+        {% endif %}
+        <span class="ss-snapshot-dot" aria-hidden="true"></span>
+        <span class="ss-snapshot-item"><strong>{{ stats.my_avg }}%</strong> average score</span>
+        {% if can_moderate %}
+        <span class="ss-snapshot-dot" aria-hidden="true"></span>
+        <span class="ss-snapshot-item"><strong>{{ stats.pending_notes }}</strong> pending review</span>
+        {% endif %}
+      </div>
     </div>
-  </div>
-</div>
-<br>
-<div class="row row-cards mb-3">
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">My uploads</div><div class="h1">{{ stats.my_notes }}</div><a href="{% url 'notes:note_list' %}?mine=1" class="btn btn-sm btn-ghost-primary">View mine</a></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Quizzes taken</div><div class="h1">{{ stats.my_attempts }}</div><a href="{% url 'notes:my_progress' %}" class="btn btn-sm btn-ghost-primary">Track progress</a></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">My avg score</div><div class="h1">{{ stats.my_avg }}%</div><a href="{% url 'notes:my_progress' %}" class="btn btn-sm btn-ghost-primary">View scores</a></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Shared notes</div><div class="h1">{{ stats.notes_total }}</div><a href="{% url 'notes:note_list' %}" class="btn btn-sm btn-ghost-primary">Search notes</a></div></div></div>
-</div>
+  </section>
 
-{% if can_moderate %}
-<div class="row row-cards mb-3">
-  <div class="col-sm-6 col-lg-3"><div class="card border-warning"><div class="card-body"><div class="text-muted">Pending review</div><div class="h1">{{ stats.pending_notes }}</div><a href="{% url 'notes:moderation_queue' %}" class="btn btn-sm btn-warning">Review materials</a></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card border-danger"><div class="card-body"><div class="text-muted">Pending reports</div><div class="h1">{{ stats.pending_reports }}</div><a href="{% url 'notes:report_list' %}" class="btn btn-sm btn-danger">Monitor reports</a></div></div></div>
-  {% if can_admin %}
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Users</div><div class="h1">Manage</div><a href="{% url 'users:user_list' %}" class="btn btn-sm btn-ghost-primary">Manage users</a></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="text-muted">Analytics</div><div class="h1">View</div><a href="{% url 'notes:system_analytics' %}" class="btn btn-sm btn-ghost-primary">System analytics</a></div></div></div>
-  {% endif %}
-</div>
-{% endif %}
-
-<div class="row">
-  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">Recent notes</h3></div><div class="list-group list-group-flush">{% for n in recent_notes %}<a href="{% url 'notes:note_detail' n.pk %}" class="list-group-item"><strong>{{ n.title }}</strong><span class="text-muted small d-block">{{ n.subject }} · {{ n.topic }} · {{ n.status }}</span></a>{% empty %}<div class="list-group-item text-muted">No notes yet.</div>{% endfor %}</div></div></div>
-  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">My recent quiz attempts</h3></div><div class="list-group list-group-flush">{% for a in my_recent_attempts %}<a href="{% url 'notes:attempt_detail' a.pk %}" class="list-group-item d-flex justify-content-between"><span>{{ a.quiz.title }}</span><span class="badge bg-green-lt">{{ a.score }}/{{ a.total }} ({{ a.percentage }}%)</span></a>{% empty %}<div class="list-group-item text-muted">No attempts yet. Open a quiz and click Take Quiz.</div>{% endfor %}</div></div></div>
-</div>
+  <aside class="ss-promo" id="ssPromo" aria-label="AI Exam Generator announcement">
+    <span class="ss-promo-icon"><svg class="ss-icon"><use href="#icon-sparkles"></use></svg></span>
+    <div class="ss-promo-copy">
+      <strong>Meet the AI Exam Generator</strong>
+      <p>Turn any note into a quiz or a printable exam &mdash; complete with an answer key, included in StudyShare.</p>
+    </div>
+    <div class="ss-promo-actions">
+      <a class="ss-btn ss-btn-ghost" href="{% url 'notes:exam_builder' %}">Learn more</a>
+      <a class="ss-btn ss-btn-light" href="{% url 'notes:exam_builder' %}">Open generator</a>
+    </div>
+    <button class="ss-promo-close" type="button" data-ss-promo-close aria-label="Dismiss announcement">
+      <svg class="ss-icon"><use href="#icon-x"></use></svg>
+    </button>
+  </aside>
+</main>
 {% endblock %}

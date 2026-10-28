@@ -1,0 +1,122 @@
+<aside class="ss-sidebar" id="ssSidebar" aria-label="Primary navigation">
+  <div class="ss-sidebar-head">
+    <a class="ss-brand" href="{% url 'dashboard' %}" title="StudyShare home">
+      <span class="ss-brand-mark">
+        <svg class="ss-icon"><use href="#icon-book-open"></use></svg>
+      </span>
+      <span class="ss-brand-name">Study<span>Share</span></span>
+    </a>
+    <div class="ss-head-actions">
+      <button class="ss-icon-btn" type="button" data-ss-search-toggle title="Search notes" aria-label="Search notes">
+        <svg class="ss-icon"><use href="#icon-search"></use></svg>
+      </button>
+      <button class="ss-icon-btn ss-collapse-btn" type="button" data-ss-collapse
+              aria-controls="ssSidebar" aria-expanded="true" title="Collapse sidebar" aria-label="Collapse sidebar">
+        <svg class="ss-icon"><use href="#icon-panel-left"></use></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="ss-sidebar-scroll">
+    
+
+    <nav class="ss-nav" aria-label="StudyShare">
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}"
+         href="{% url 'dashboard' %}" title="Dashboard">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-plus"></use></svg>
+        <span class="ss-nav-label">New Chat</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.app_name == 'notes' and request.resolver_match.url_name == 'note_list' or request.resolver_match.url_name == 'note_detail' %}is-active{% endif %}"
+         href="{% url 'notes:note_list' %}" title="Browse notes">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-book-open"></use></svg>
+        <span class="ss-nav-label">Browse notes</span>
+      </a>
+      
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'exam_list' or request.resolver_match.url_name == 'exam_builder' or request.resolver_match.url_name == 'quiz_detail' or request.resolver_match.url_name == 'quiz_take' or request.resolver_match.url_name == 'attempt_detail' %}is-active{% endif %}"
+         href="{% url 'notes:exam_list' %}" title="My quizzes and exams">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-file-text"></use></svg>
+        <span class="ss-nav-label">My quizzes</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'my_progress' %}is-active{% endif %}"
+         href="{% url 'notes:my_progress' %}" title="My progress">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-chart-line"></use></svg>
+        <span class="ss-nav-label">My progress</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'report_list' %}is-active{% endif %}"
+         href="{% url 'notes:report_list' %}" title="My reports">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-flag"></use></svg>
+        <span class="ss-nav-label">My reports</span>
+      </a>
+
+      {% if can_moderate %}
+      <span class="ss-nav-section">Instructor</span>
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'moderation_queue' %}is-active{% endif %}"
+         href="{% url 'notes:moderation_queue' %}" title="Review materials">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-shield"></use></svg>
+        <span class="ss-nav-label">Review materials</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'subject_list' %}is-active{% endif %}"
+         href="{% url 'notes:subject_list' %}" title="Manage subjects">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-folder"></use></svg>
+        <span class="ss-nav-label">Subjects</span>
+      </a>
+      {% endif %}
+
+      {% if can_admin %}
+      <span class="ss-nav-section">Administrator</span>
+      <a class="ss-nav-item {% if request.resolver_match.app_name == 'users' %}is-active{% endif %}"
+         href="{% url 'users:user_list' %}" title="Manage users">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-users"></use></svg>
+        <span class="ss-nav-label">Manage users</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'system_analytics' %}is-active{% endif %}"
+         href="{% url 'notes:system_analytics' %}" title="System analytics">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-bar-chart"></use></svg>
+        <span class="ss-nav-label">Analytics</span>
+      </a>
+      <a class="ss-nav-item {% if request.resolver_match.app_name == 'info' %}is-active{% endif %}"
+         href="{% url 'info:info_list' %}" title="System info">
+        <svg class="ss-icon ss-nav-icon"><use href="#icon-info"></use></svg>
+        <span class="ss-nav-label">Info</span>
+      </a>
+      {% endif %}
+    </nav>
+
+    
+
+    <section class="ss-section" aria-labelledby="ssRecentsLabel">
+      <div class="ss-section-head">
+        <span id="ssRecentsLabel">Recents</span>
+        <span class="ss-section-glyph" aria-hidden="true">
+          <svg class="ss-icon"><use href="#icon-history"></use></svg>
+        </span>
+      </div>
+      {% for conversation in sidebar_conversations %}
+      <a class="ss-section-link {% if active_conversation and conversation.pk == active_conversation.pk %}is-active{% endif %}"
+         href="{% url 'chat:detail' conversation.pk %}" title="{{ conversation.title }}">
+        <svg class="ss-icon"><use href="#icon-message"></use></svg>
+        <span>{{ conversation.title }}</span>
+      </a>
+      {% empty %}
+      <p class="ss-empty">No chats yet</p>
+      {% endfor %}
+    </section>
+  </div>
+
+  <div class="ss-sidebar-foot">
+    
+
+    <div class="ss-user">
+      <a class="ss-user-link" href="{% url 'notes:my_progress' %}" title="View your progress">
+        <span class="ss-avatar">{{ initials }}</span>
+        <span class="ss-user-copy">
+          <span class="ss-user-name">{{ display_name }}</span>
+          <span class="ss-user-meta">{{ user_role|default:"student"|title }} &middot; Free</span>
+        </span>
+      </a>
+      <a class="ss-user-logout" href="{% url 'logout' %}" title="Log out" aria-label="Log out">
+        <svg class="ss-icon"><use href="#icon-log-out"></use></svg>
+      </a>
+    </div>
+  </div>
+</aside>

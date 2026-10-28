@@ -9,7 +9,7 @@ Strategy (no extra dependencies, stdlib urllib only):
 
 Env / settings keys:
   OPENAI_API_KEY / OPENAI_MODEL (default gpt-4o-mini)
-  GEMINI_API_KEY / GEMINI_MODEL (default gemini-1.5-flash)
+  GEMINI_API_KEY / GEMINI_MODEL (default gemini-flash-latest)
   OPENROUTER_API_KEY / OPENROUTER_MODEL (default openai/gpt-4o-mini)
   OPENROUTER_SITE_URL / OPENROUTER_APP_NAME (optional OpenRouter headers)
 """
@@ -34,7 +34,15 @@ VALID_PROVIDERS = ('auto', 'local', 'openai', 'gemini', 'openrouter')
 
 
 def _cfg(name, default=''):
-    return (getattr(settings, name, '') or os.environ.get(name, '') or default).strip()
+    """Read a setting first; only fall back to os.environ when it is absent.
+
+    Settings are populated from the environment (and .env) at startup, so this
+    keeps explicit overrides -- including tests -- authoritative.
+    """
+    value = getattr(settings, name, None)
+    if value is None:
+        value = os.environ.get(name, '')
+    return (value or default).strip()
 
 
 def get_openai_config():
@@ -251,16 +259,29 @@ def _generate_with_gemini(source_text, num_questions, question_type, api_key, mo
         '\nOutput ONLY a JSON array. No markdown, no explanation.'
     )
     # If a retired model name is configured, fall back to the rolling alias.
-    models_to_try = [model] if model in ('gemini-flash-latest', 'gemini-3.8-flash') else [model, 'gemini-flash-latest']
+    models_to_try = [model]
+    if model != 'gemini-flash-latest':
+        models_to_try.append('gemini-flash-latest')
     last_exc = None
     for m in models_to_try:
         payload = json.dumps({
             'contents': [{'parts': [{'text': prompt}]}],
-            'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2000},
+            'generationConfig': {
+                'temperature': 0.7,
+                'maxOutputTokens': 2000,
+                # Leave the full budget for the JSON answer.
+                'thinkingConfig': {'thinkingBudget': 0},
+            },
         }).encode('utf-8')
-        url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}'
+        url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent'
         req = urllib.request.Request(
-            url, data=payload, headers={'Content-Type': 'application/json'}, method='POST',
+            url,
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'x-goog-api-key': api_key,
+            },
+            method='POST',
         )
         try:
             with urllib.request.urlopen(req, timeout=40) as resp:
@@ -270,7 +291,11 @@ def _generate_with_gemini(source_text, num_questions, question_type, api_key, mo
                 body = e.read().decode()[:500]
             except Exception:
                 body = ''
-            if m != 'gemini-flash-latest' and ('not found' in body.lower() or 'no longer available' in body.lower()):
+            if m != 'gemini-flash-latest' and (
+                e.code in (404, 503)
+                or 'not found' in body.lower()
+                or 'no longer available' in body.lower()
+            ):
                 last_exc = e
                 continue
             raise

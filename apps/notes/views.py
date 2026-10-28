@@ -629,7 +629,6 @@ def system_analytics(request):
         'labels': [r['subject'] for r in notes_by_subject],
         'values': [r['c'] for r in notes_by_subject],
     }
-    import json as _json
     return render(request, 'notes/analytics.html', {
         'users_total': users_total, 'by_role': by_role,
         'notes_total': notes_total, 'notes_by_status': notes_by_status,
@@ -640,8 +639,8 @@ def system_analytics(request):
         'reports_total': reports_total, 'reports_pending': reports_pending,
         'recent_notes': recent_notes, 'recent_attempts': recent_attempts,
         'recent_reports': recent_reports,
-        'chart_subjects_json': _json.dumps(chart_subjects),
-        'chart_attempts_json': _json.dumps(chart_attempts),
+        'chart_subjects_json': chart_subjects,
+        'chart_attempts_json': chart_attempts,
     })
 
 

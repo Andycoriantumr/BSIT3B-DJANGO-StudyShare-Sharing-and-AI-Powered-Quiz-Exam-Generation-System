@@ -140,27 +140,39 @@ def logout_view(request):
 
 @login_required(login_url='login')
 def home(request):
-    from apps.notes.models import Note, NoteReport, QuizAttempt, QuizSet
-    from apps.users.roles import can_admin, can_moderate, ensure_profile
     from django.db.models import Avg
+
+    from apps.chat.models import Conversation
+    from apps.notes.models import Note, QuizAttempt, QuizSet, Subject
+    from apps.users.roles import can_admin, can_moderate, ensure_profile
 
     ensure_profile(request.user)
     stats = {
-        'notes_total': Note.objects.count(),
         'my_notes': Note.objects.filter(uploaded_by=request.user).count(),
         'quizzes_total': QuizSet.objects.count(),
         'my_attempts': QuizAttempt.objects.filter(taker=request.user).count(),
         'my_avg': QuizAttempt.objects.filter(taker=request.user).aggregate(a=Avg('percentage'))['a'] or 0,
-        'pending_reports': NoteReport.objects.filter(status=NoteReport.STATUS_PENDING).count() if can_moderate(request.user) else 0,
         'pending_notes': Note.objects.filter(status=Note.STATUS_PENDING).count() if can_moderate(request.user) else 0,
     }
     stats['my_avg'] = round(stats['my_avg'], 2)
-    recent_notes = Note.objects.select_related('uploaded_by').order_by('-created_at')[:5]
-    my_recent_attempts = QuizAttempt.objects.filter(taker=request.user).select_related('quiz').order_by('-submitted_at')[:5]
+
+    display_name = request.user.get_full_name().strip() or request.user.username
+    initials = ''.join(part[0] for part in display_name.split()[:2]).upper() or request.user.username[:1].upper()
+
+    sidebar_subjects = Subject.objects.filter(is_active=True).order_by('name')[:3]
+    sidebar_conversations = list(
+        Conversation.objects.filter(user=request.user).order_by('-updated_at')[:6]
+    )
+
     return render(request, 'home.html', {
-        'stats': stats, 'recent_notes': recent_notes,
-        'my_recent_attempts': my_recent_attempts,
-        'can_moderate': can_moderate(request.user), 'can_admin': can_admin(request.user),
+        'stats': stats,
+        'sidebar_subjects': sidebar_subjects,
+        'sidebar_conversations': sidebar_conversations,
+        'active_conversation': None,
+        'display_name': display_name,
+        'initials': initials,
+        'can_moderate': can_moderate(request.user),
+        'can_admin': can_admin(request.user),
     })
 
 

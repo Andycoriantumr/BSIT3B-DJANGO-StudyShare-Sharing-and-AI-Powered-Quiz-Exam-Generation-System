@@ -1,0 +1,94 @@
+{% extends "theme/chat_base.html" %}
+
+{% block title %}{{ conversation.title }} — StudyShare{% endblock %}
+
+{% block content %}
+<main class="ss-chat-main" data-initials="{{ initials }}"
+      data-provider-label="{% if ai_online %}{{ ai_provider_label }}{% endif %}">
+  <header class="ss-chat-head">
+    <div class="ss-chat-head-copy">
+      <h1 class="ss-chat-title" id="ssChatTitle">{{ conversation.title }}</h1>
+      <p class="ss-chat-meta" id="ssChatMeta">
+        StudyShare AI{% if ai_online %} &middot; {{ ai_provider_label }}{% endif %} &middot; {{ chat_messages|length }} message{{ chat_messages|length|pluralize }}
+      </p>
+    </div>
+    <a class="ss-btn ss-btn-ghost ss-chat-new" href="{% url 'dashboard' %}">
+      <svg class="ss-icon"><use href="#icon-plus"></use></svg>
+      New chat
+    </a>
+  </header>
+
+  <div class="ss-chat-scroll" id="ssChatScroll">
+    <div class="ss-thread" id="ssThread" data-initials="{{ initials }}">
+      {% for message in chat_messages %}
+      <article class="ss-msg ss-msg--{{ message.role }}" data-msg-id="{{ message.pk }}">
+        {% if message.role == 'assistant' %}
+        <div class="ss-msg-mark" aria-hidden="true">
+          <svg class="ss-icon"><use href="#icon-sparkles"></use></svg>
+        </div>
+        {% endif %}
+
+        <div class="ss-msg-main">
+          {% if message.role == 'assistant' %}
+          <div class="ss-msg-meta">
+            StudyShare AI
+            {% if message.provider %}<span class="ss-msg-badge ss-msg-badge--{{ message.provider }}">{{ message.provider_label }}</span>{% endif %}
+          </div>
+          {% endif %}
+
+          <div class="ss-md" data-markdown>{{ message.content }}</div>
+
+          {% if message.role == 'assistant' %}
+          <div class="ss-msg-actions">
+            <button class="ss-msg-action" type="button" data-ss-copy title="Copy answer">
+              <svg class="ss-icon"><use href="#icon-copy"></use></svg>
+              Copy
+            </button>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if message.role == 'user' %}
+        <span class="ss-avatar ss-avatar--sm" aria-hidden="true">{{ initials }}</span>
+        {% endif %}
+      </article>
+      {% endfor %}
+
+      <article class="ss-msg ss-msg--assistant ss-msg--typing" id="ssTyping" hidden>
+        <div class="ss-msg-mark" aria-hidden="true">
+          <svg class="ss-icon"><use href="#icon-sparkles"></use></svg>
+        </div>
+        <div class="ss-msg-main">
+          <div class="ss-msg-meta">StudyShare AI</div>
+          <div class="ss-typing" role="status" aria-label="StudyShare AI is typing">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <div class="ss-composer-wrap">
+    <form class="ss-composer" id="ssChatForm" method="post" action="{% url 'chat:send' conversation.pk %}">
+      {% csrf_token %}
+      <input type="hidden" name="think" value="0" data-ss-think-input>
+      <label class="ss-visually-hidden" for="ssComposerInput">Message StudyShare AI</label>
+      <textarea class="ss-composer-input" id="ssComposerInput" name="content" rows="1"
+                placeholder="Ask a follow-up…" autocomplete="off"></textarea>
+      <div class="ss-composer-tools">
+        <button class="ss-think" type="button" data-ss-think aria-pressed="false" title="Think before answering">
+          <svg class="ss-icon"><use href="#icon-brain"></use></svg>
+          <span>Think</span>
+        </button>
+        <button class="ss-icon-btn ss-mic" type="button" data-ss-mic title="Voice input" aria-label="Voice input">
+          <svg class="ss-icon"><use href="#icon-mic"></use></svg>
+        </button>
+        <button class="ss-send" type="submit" title="Send message" aria-label="Send message">
+          <svg class="ss-icon"><use href="#icon-arrow-up"></use></svg>
+        </button>
+      </div>
+    </form>
+    <p class="ss-composer-note">StudyShare AI can make mistakes. Verify important details against your notes.</p>
+  </div>
+</main>
+{% endblock %}
