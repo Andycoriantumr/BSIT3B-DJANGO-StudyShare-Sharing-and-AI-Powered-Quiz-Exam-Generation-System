@@ -1,13 +1,5 @@
 # StudyShare — Notes Sharing with AI-Powered Quiz & Exam Generation
 
-A Django web app where students upload and organize study notes by
-**subject, instructor, topic, and school year**, search and rate useful notes,
-and generate quiz/exam questions with AI. Guests can use the full study
-experience without signing in; creating an account keeps their work.
-Includes role-based access (Student / Instructor-Moderator / Administrator),
-quiz taking with auto-scoring, progress tracking, content moderation, and
-system analytics.
-
 ## Members
 
 - Andy Coriantumr P. Peduhan
@@ -16,15 +8,11 @@ system analytics.
 
 ## Features
 
-- **Notes sharing** — upload (pdf/docx/txt/md/images) or paste text, organized by subject, instructor, topic, school year; search, filter chips, sort (newest/oldest/top-rated)
+- **Notes sharing** — upload (pdf/docx) or paste text, organized by subject, instructor, topic, school year; search, filter chips, sort (newest/oldest/top-rated)
 - **Guest-first access** — open the app and start studying immediately; a temporary guest account is created behind the scenes, and signing in or registering keeps the chats, notes, and quiz attempts you already made
-- **Ratings** — 1–5 stars, one per user per note (re-rate updates)
 - **AI quiz/exam generator** — per-note quizzes plus multi-note automated exams with printable paper (Name/Date/Score boxes) and instructor answer key; providers: OpenAI, Gemini, OpenRouter, offline local fallback
 - **AI study chat** — dashboard prompt starts a saved conversation, follows up with context from previous turns, and searches StudyShare notes for relevant excerpts; uploading a file automatically generates an answerable practice quiz from its contents (choose 1–50 questions), then shows the score and answer key after submission and saves a viewable, printable attempt to My Quizzes and My Progress; uploaded files appear in Uploaded Notes with private preview, download, and delete actions; chat history appears in the sidebar and replies use the same providers (offline note-summary fallback)
 - **Quiz taking & scores** — auto-graded MCQ/True-False, attempt review, per-student progress page
-- **Roles** — Student (default), Instructor/Moderator (review queue, remove content, manage subjects, monitor reports), Administrator (manage users/roles, analytics)
-- **Reports & moderation** — report inappropriate/incorrect notes; approve/reject/remove flow
-- **Analytics** — users by role, notes by status/subject, attempts charts
 
 ## Tech stack
 
@@ -45,9 +33,8 @@ account, sign in with one of the demo accounts:
 
 | Role | Username | Password |
 |---|---|---|
-| Administrator | `admin` | `admin12345` |
-| Instructor | `instructor` | `ins12345` |
-| Student | `student` | `stu12345` |
+| User | `andy` | `Andy123456` |
+
 
 Guest chats and quizzes are temporary. Registering upgrades the same guest
 account in place, while signing in moves guest-owned work into the existing
@@ -61,9 +48,6 @@ AI study chat; without them, chat replies summarise matching notes instead.
 To enable cloud AI, copy `.env.example` to `.env` and fill in at least one key
 (never commit `.env` — it is already gitignored):
 
-```powershell
-Copy-Item .env.example .env
-```
 
 ```ini
 GEMINI_API_KEY=...
@@ -79,14 +63,6 @@ one explicitly. Gemini requests use the `x-goog-api-key` header and disable
 thinking so the full output budget goes to the visible answer. You can also
 export the same variables in your shell instead of using `.env`.
 
-## Useful commands
-
-```bash
-python manage.py seed_examples                 # idempotent demo data
-python manage.py auto_generate_quizzes --limit 10 --provider auto
-python manage.py cleanup_guests --days 30      # remove abandoned guest accounts
-python -m pytest -q                            # test suite
-```
 
 ## Docs
 
