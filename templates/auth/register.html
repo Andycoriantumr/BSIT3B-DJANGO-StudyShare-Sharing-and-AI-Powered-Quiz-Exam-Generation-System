@@ -4,7 +4,13 @@
 
 {% block auth_content %}
 <h1 class="ss-auth-title">Create your account</h1>
-<p class="ss-auth-sub">Join StudyShare to share notes and study with AI.</p>
+<p class="ss-auth-sub">{% if current_is_guest %}Save your guest chats and quizzes by creating a free account.{% else %}Join StudyShare to share notes and study with AI.{% endif %}</p>
+
+{% if current_is_guest %}
+<div class="alert alert-info" role="status">
+  Everything you created as a guest stays in your account after you sign up.
+</div>
+{% endif %}
 
 {% if errors %}
 <div class="alert alert-danger" role="alert">

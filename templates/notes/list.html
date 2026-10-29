@@ -2,109 +2,42 @@
 {% block content %}
 <nav aria-label="breadcrumb" class="d-print-none"><ol class="breadcrumb">
   <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
-  <li class="breadcrumb-item active">Shared Notes</li>
+  <li class="breadcrumb-item active">Uploaded Notes</li>
 </ol></nav>
 <div class="page-header d-print-none">
   <div class="row align-items-center">
     <div class="col">
       <div class="page-pretitle">StudyShare</div>
-      <h2 class="page-title">Shared Notes</h2>
-    </div>
-    <div class="col-auto d-flex gap-2">
-      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="{% if filters.q or filters.subject or filters.school_year or filters.instructor or filters.topic or filters.mine == '1' or filters.status %}true{% else %}false{% endif %}">
-        <i class="fas fa-filter me-1"></i>Filters{% if filters.q or filters.subject or filters.school_year or filters.instructor or filters.topic or filters.mine == '1' or filters.status %} •{% endif %}
-      </button>
-      <a href="{% url 'notes:note_create' %}" class="btn btn-primary"><i class="fas fa-upload me-2"></i>Upload Notes</a>
+      <h2 class="page-title">Uploaded Notes</h2>
     </div>
   </div>
 </div>
 
-<div class="d-flex gap-2 flex-wrap mt-2 mb-1">
-  <a href="{% url 'notes:note_list' %}" class="badge {% if not filters.subject %}bg-primary text-white{% else %}bg-blue-lt{% endif %} text-decoration-none p-2">All subjects</a>
-  {% for s in subjects %}<a href="?subject={{ s.name|urlencode }}" class="badge {% if filters.subject == s.name %}bg-primary text-white{% else %}bg-blue-lt{% endif %} text-decoration-none p-2">{{ s.name }}</a>{% endfor %}
-</div>
-
-<div class="collapse {% if filters.q or filters.subject or filters.school_year or filters.instructor or filters.topic or filters.mine == '1' or filters.status %}show{% endif %} mb-3" id="filterPanel">
-<div class="card"><div class="card-body">
-    <form method="GET" class="row g-2">
-      <div class="col-md-4">
-        <input type="text" name="q" value="{{ filters.q }}" class="form-control" placeholder="Search title, topic, instructor...">
-      </div>
-      <div class="col-md-2">
-        <select name="school_year" class="form-select">
-          <option value="">All School Years</option>
-          {% for y in school_years %}<option value="{{ y }}" {% if filters.school_year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <select name="sort" class="form-select">
-          <option value="-created_at" {% if filters.sort == '-created_at' %}selected{% endif %}>Newest</option>
-          <option value="oldest" {% if filters.sort == 'oldest' %}selected{% endif %}>Oldest</option>
-          <option value="top" {% if filters.sort == 'top' %}selected{% endif %}>Top Rated</option>
-        </select>
-      </div>
-      <div class="col-md-2 d-flex gap-2">
-        <button class="btn btn-primary flex-fill" type="submit">Filter</button>
-        <a href="{% url 'notes:note_list' %}" class="btn btn-ghost-secondary">Clear</a>
-      </div>
-      <div class="col-12 d-flex gap-3 flex-wrap align-items-center">
-        <label class="form-check"><input type="checkbox" name="mine" value="1" class="form-check-input" {% if filters.mine == '1' %}checked{% endif %} onchange="this.form.submit()"> <span class="form-check-label">My uploads only</span></label>
-        <input type="text" name="instructor" value="{{ filters.instructor }}" class="form-control form-control-sm" style="max-width:200px" placeholder="Instructor filter">
-        <input type="text" name="topic" value="{{ filters.topic }}" class="form-control form-control-sm" style="max-width:200px" placeholder="Topic filter">
-        {% if can_moderate %}
-        <select name="status" class="form-select form-select-sm" style="max-width:180px" onchange="this.form.submit()">
-          <option value="">All statuses</option>
-          <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Pending</option>
-          <option value="approved" {% if filters.status == 'approved' %}selected{% endif %}>Approved</option>
-          <option value="rejected" {% if filters.status == 'rejected' %}selected{% endif %}>Rejected</option>
-        </select>
-        {% endif %}
-      </div>
-      {% if filters.subject %}<input type="hidden" name="subject" value="{{ filters.subject }}">{% endif %}
-    </form>
-  </div></div>
-</div>
-
-<div class="row row-cards">
-  {% for note in notes %}
-  <div class="col-md-4">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <span class="badge bg-blue-lt">{{ note.subject }}</span>
-          <span class="text-warning" title="{{ note.num_ratings }} rating(s)">★ {{ note.avg_score|default:"0"|floatformat:1 }} <span class="text-muted">({{ note.num_ratings }})</span></span>
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="card-title">My Uploaded Files</h3>
+  </div>
+  <div class="list-group list-group-flush">
+    {% for attachment in uploaded_files %}
+    <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="min-w-0">
+        <div class="fw-semibold text-truncate">{{ attachment.original_name|default:"Uploaded file" }}</div>
+        <div class="text-muted small">
+          Chat: {{ attachment.message.conversation.title }} · {{ attachment.created_at|date:"M d, Y" }}
         </div>
-        {% if note.status != 'approved' %}<span class="badge {% if note.status == 'pending' %}bg-yellow-lt{% else %}bg-red-lt{% endif %} mb-2">{{ note.status }}</span>{% endif %}
-        <h3 class="card-title"><a href="{% url 'notes:note_detail' note.pk %}">{{ note.title }}</a></h3>
-        <div class="text-muted small mb-2">{{ note.topic }} · {{ note.instructor }} · {{ note.school_year }}</div>
-        <p class="text-muted">{{ note.description|truncatewords:20|default:"No summary." }}</p>
-        <div class="text-muted small">by {{ note.uploaded_by.username }} · {{ note.created_at|date:"M d, Y" }}{% if note.file %} · <i class="fas fa-paperclip"></i> file{% endif %} · <i class="fas fa-robot"></i> {{ note.num_quizzes }} quiz{{ note.num_quizzes|pluralize:"zes" }}</div>
       </div>
-      <div class="card-footer">
-        <a href="{% url 'notes:note_detail' note.pk %}" class="btn btn-outline-primary btn-sm w-100">View & Generate Quiz</a>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'chat:view_attachment' attachment.pk %}" target="_blank" rel="noopener">View</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'chat:download_attachment' attachment.pk %}">Download</a>
+        <form method="post" action="{% url 'chat:delete_attachment' attachment.pk %}" onsubmit="return confirm('Delete this uploaded file?')">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+        </form>
       </div>
     </div>
+    {% empty %}
+    <div class="list-group-item text-muted">Files you upload in chat will appear here.</div>
+    {% endfor %}
   </div>
-  {% empty %}
-  <div class="col-12"><div class="empty py-5">
-    <div class="empty-icon"><i class="fas fa-book-open fa-2x text-muted"></i></div>
-    <p class="empty-title">No notes found</p>
-    <p class="empty-subtitle">{% if filters.q or filters.subject or filters.school_year %}Nothing matches these filters — try clearing them.{% else %}Be the first to share — upload notes for your class.{% endif %}</p>
-    <div class="empty-action d-flex gap-2 justify-content-center">
-      <a href="{% url 'notes:note_list' %}" class="btn btn-ghost-secondary">Clear filters</a>
-      <a href="{% url 'notes:note_create' %}" class="btn btn-primary">Upload Notes</a>
-    </div>
-  </div></div>
-  {% endfor %}
 </div>
-
-{% if notes.paginator.num_pages > 1 %}
-<div class="card mt-3"><div class="card-footer d-flex align-items-center">
-  <p class="m-0 text-muted">Page {{ notes.number }} of {{ notes.paginator.num_pages }} — {{ notes.paginator.count }} notes</p>
-  <ul class="pagination m-0 ms-auto">
-    {% if notes.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ notes.previous_page_number }}&q={{ filters.q }}&subject={{ filters.subject }}&school_year={{ filters.school_year }}&sort={{ filters.sort }}">prev</a></li>{% endif %}
-    {% if notes.has_next %}<li class="page-item"><a class="page-link" href="?page={{ notes.next_page_number }}&q={{ filters.q }}&subject={{ filters.subject }}&school_year={{ filters.school_year }}&sort={{ filters.sort }}">next</a></li>{% endif %}
-  </ul>
-</div></div>
-{% endif %}
 {% endblock %}

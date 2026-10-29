@@ -2,19 +2,27 @@
 {% block content %}
 <nav aria-label="breadcrumb" class="d-print-none"><ol class="breadcrumb">
   <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
-  <li class="breadcrumb-item active">Generated Exams</li>
+  <li class="breadcrumb-item active">My Quizzes</li>
 </ol></nav>
 <div class="page-header d-print-none"><div class="row align-items-center"><div class="col">
-<div class="page-pretitle">Automation output</div><h2 class="page-title">Generated Exams</h2>
-</div><div class="col-auto"><a href="{% url 'notes:exam_builder' %}" class="btn btn-primary">Build New Exam</a></div></div></div>
+<div class="page-pretitle">Your submitted practice quizzes</div><h2 class="page-title">My Quizzes</h2>
+</div></div></div>
 <br>
-<div class="card mb-3"><div class="card-body"><form method="GET" class="row g-2">
-<div class="col-md-5"><input name="q" value="{{ q }}" class="form-control" placeholder="Search exams..."></div>
-<div class="col-md-4"><select name="subject" class="form-select"><option value="">All subjects</option>{% for s in subjects %}<option value="{{ s.name }}" {% if subject == s.name %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
-<div class="col-md-3 d-flex gap-2"><button class="btn btn-primary flex-fill">Filter</button><a href="{% url 'notes:exam_list' %}" class="btn btn-ghost-secondary">Clear</a></div>
-</form></div></div>
-<div class="card"><div class="list-group list-group-flush">{% for e in exams %}
-<div class="list-group-item d-flex justify-content-between flex-wrap gap-2"><div><a href="{% url 'notes:quiz_detail' e.pk %}"><strong>{{ e.title }}</strong></a> <span class="badge bg-purple-lt">Exam</span><div class="text-muted small">{{ e.exam_subject }} · {{ e.num_questions }} Qs · {{ e.get_question_type_display }} · {{ e.provider }} · by {{ e.created_by.username }} · {{ e.created_at|date:"M d, Y" }}</div></div><div class="d-flex gap-1"><a href="{% url 'notes:quiz_take' e.pk %}" class="btn btn-sm btn-primary">Take</a><a href="{% url 'notes:quiz_detail' e.pk %}" class="btn btn-sm btn-outline-primary">Paper + Key</a></div></div>
-{% empty %}<div class="list-group-item text-muted">No exams yet.</div>{% endfor %}</div>
-{% if exams.paginator.num_pages > 1 %}<div class="card-footer d-flex"><span class="text-muted small">Page {{ exams.number }} of {{ exams.paginator.num_pages }}</span><ul class="pagination ms-auto mb-0">{% if exams.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ exams.previous_page_number }}&q={{ q }}&subject={{ subject }}">prev</a></li>{% endif %}{% if exams.has_next %}<li class="page-item"><a class="page-link" href="?page={{ exams.next_page_number }}&q={{ q }}&subject={{ subject }}">next</a></li>{% endif %}</ul></div>{% endif %}</div>
+<div class="card mb-3"><div class="card-header"><h3 class="card-title">Chat Practice Quizzes Taken</h3></div><div class="list-group list-group-flush">
+{% for attempt in chat_attempts %}
+<div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <strong>{{ attempt.message.conversation.title }}</strong>
+    <div class="text-muted small">Taken {{ attempt.submitted_at|date:"M d, Y H:i" }}</div>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge bg-green-lt">{{ attempt.score }}/{{ attempt.total }} ({{ attempt.percentage }}%)</span>
+    <a href="{% url 'chat:quiz_attempt_detail' attempt.pk %}" class="btn btn-sm btn-outline-primary">View result</a>
+    <a href="{% url 'chat:detail' attempt.message.conversation_id %}" class="btn btn-sm btn-outline-primary">Open quiz</a>
+  </div>
+</div>
+{% empty %}<div class="list-group-item text-muted">Chat quizzes you submit will appear here.</div>{% endfor %}
+</div>
+{% if chat_attempts.has_other_pages %}<div class="card-footer d-flex justify-content-between align-items-center"><span class="text-muted small">Page {{ chat_attempts.number }} of {{ chat_attempts.paginator.num_pages }}</span><div class="btn-list">{% if chat_attempts.has_previous %}<a class="btn btn-sm btn-ghost-secondary" href="?chat_page={{ chat_attempts.previous_page_number }}">Previous</a>{% endif %}{% if chat_attempts.has_next %}<a class="btn btn-sm btn-ghost-secondary" href="?chat_page={{ chat_attempts.next_page_number }}">Next</a>{% endif %}</div></div>{% endif %}
+</div>
 {% endblock %}

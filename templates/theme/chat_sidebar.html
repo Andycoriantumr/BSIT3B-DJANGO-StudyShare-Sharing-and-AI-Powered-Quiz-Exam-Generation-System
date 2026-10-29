@@ -27,9 +27,9 @@
         <span class="ss-nav-label">New Chat</span>
       </a>
       <a class="ss-nav-item {% if request.resolver_match.app_name == 'notes' and request.resolver_match.url_name == 'note_list' or request.resolver_match.url_name == 'note_detail' %}is-active{% endif %}"
-         href="{% url 'notes:note_list' %}" title="Browse notes">
+         href="{% url 'notes:note_list' %}" title="Uploaded notes">
         <svg class="ss-icon ss-nav-icon"><use href="#icon-book-open"></use></svg>
-        <span class="ss-nav-label">Browse notes</span>
+        <span class="ss-nav-label">Uploaded notes</span>
       </a>
       
       <a class="ss-nav-item {% if request.resolver_match.url_name == 'exam_list' or request.resolver_match.url_name == 'exam_builder' or request.resolver_match.url_name == 'quiz_detail' or request.resolver_match.url_name == 'quiz_take' or request.resolver_match.url_name == 'attempt_detail' %}is-active{% endif %}"
@@ -42,43 +42,10 @@
         <svg class="ss-icon ss-nav-icon"><use href="#icon-chart-line"></use></svg>
         <span class="ss-nav-label">My progress</span>
       </a>
-      <a class="ss-nav-item {% if request.resolver_match.url_name == 'report_list' %}is-active{% endif %}"
-         href="{% url 'notes:report_list' %}" title="My reports">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-flag"></use></svg>
-        <span class="ss-nav-label">My reports</span>
-      </a>
-
       {% if can_moderate %}
-      <span class="ss-nav-section">Instructor</span>
-      <a class="ss-nav-item {% if request.resolver_match.url_name == 'moderation_queue' %}is-active{% endif %}"
-         href="{% url 'notes:moderation_queue' %}" title="Review materials">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-shield"></use></svg>
-        <span class="ss-nav-label">Review materials</span>
-      </a>
-      <a class="ss-nav-item {% if request.resolver_match.url_name == 'subject_list' %}is-active{% endif %}"
-         href="{% url 'notes:subject_list' %}" title="Manage subjects">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-folder"></use></svg>
-        <span class="ss-nav-label">Subjects</span>
-      </a>
       {% endif %}
 
       {% if can_admin %}
-      <span class="ss-nav-section">Administrator</span>
-      <a class="ss-nav-item {% if request.resolver_match.app_name == 'users' %}is-active{% endif %}"
-         href="{% url 'users:user_list' %}" title="Manage users">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-users"></use></svg>
-        <span class="ss-nav-label">Manage users</span>
-      </a>
-      <a class="ss-nav-item {% if request.resolver_match.url_name == 'system_analytics' %}is-active{% endif %}"
-         href="{% url 'notes:system_analytics' %}" title="System analytics">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-bar-chart"></use></svg>
-        <span class="ss-nav-label">Analytics</span>
-      </a>
-      <a class="ss-nav-item {% if request.resolver_match.app_name == 'info' %}is-active{% endif %}"
-         href="{% url 'info:info_list' %}" title="System info">
-        <svg class="ss-icon ss-nav-icon"><use href="#icon-info"></use></svg>
-        <span class="ss-nav-label">Info</span>
-      </a>
       {% endif %}
     </nav>
 
@@ -92,11 +59,40 @@
         </span>
       </div>
       {% for conversation in sidebar_conversations %}
-      <a class="ss-section-link {% if active_conversation and conversation.pk == active_conversation.pk %}is-active{% endif %}"
-         href="{% url 'chat:detail' conversation.pk %}" title="{{ conversation.title }}">
-        <svg class="ss-icon"><use href="#icon-message"></use></svg>
-        <span>{{ conversation.title }}</span>
-      </a>
+      <div class="ss-recent-row">
+        <a class="ss-section-link {% if active_conversation and conversation.pk == active_conversation.pk %}is-active{% endif %}"
+           href="{% url 'chat:detail' conversation.pk %}" title="{{ conversation.title }}">
+          <svg class="ss-icon"><use href="{% if conversation.is_pinned %}#icon-pin{% else %}#icon-message{% endif %}"></use></svg>
+          <span>{{ conversation.title }}</span>
+        </a>
+        <details class="ss-recent-actions">
+          <summary aria-label="Actions for {{ conversation.title }}" title="Chat actions">
+            <svg class="ss-icon"><use href="#icon-more-horizontal"></use></svg>
+          </summary>
+          <div class="ss-recent-menu">
+            <form method="post" action="{% url 'chat:toggle_pin' conversation.pk %}">
+              {% csrf_token %}
+              <button type="submit">{% if conversation.is_pinned %}Unpin chat{% else %}Pin chat{% endif %}</button>
+            </form>
+            <form method="post" action="{% url 'chat:share_conversation' conversation.pk %}"
+                  data-share-form data-has-share="{% if conversation.share_token %}true{% else %}false{% endif %}">
+              {% csrf_token %}
+              <button type="submit">{% if conversation.share_token %}Copy public link{% else %}Share publicly{% endif %}</button>
+            </form>
+            <form method="post" action="{% url 'chat:revoke_share' conversation.pk %}"
+                  data-confirm="Disable this public link? Anyone using it will lose access."
+                  data-revoke-form {% if not conversation.share_token %}hidden{% endif %}>
+              {% csrf_token %}
+              <button type="submit">Disable public link</button>
+            </form>
+            <form method="post" action="{% url 'chat:delete_conversation' conversation.pk %}"
+                  data-confirm="Delete this chat and its messages? This cannot be undone.">
+              {% csrf_token %}
+              <button type="submit" class="is-danger">Delete chat</button>
+            </form>
+          </div>
+        </details>
+      </div>
       {% empty %}
       <p class="ss-empty">No chats yet</p>
       {% endfor %}
@@ -107,16 +103,23 @@
     
 
     <div class="ss-user">
-      <a class="ss-user-link" href="{% url 'notes:my_progress' %}" title="View your progress">
+      <a class="ss-user-link" href="{% if is_guest %}{% url 'register' %}{% else %}{% url 'notes:my_progress' %}{% endif %}"
+         title="{% if is_guest %}Create an account to save your work{% else %}View your progress{% endif %}">
         <span class="ss-avatar">{{ initials }}</span>
         <span class="ss-user-copy">
           <span class="ss-user-name">{{ display_name }}</span>
-          <span class="ss-user-meta">{{ user_role|default:"student"|title }} &middot; Free</span>
+          <span class="ss-user-meta">{% if is_guest %}Guest session &middot; Save your work{% else %}{{ user_role|default:"student"|title }} &middot; Free{% endif %}</span>
         </span>
       </a>
+      {% if is_guest %}
+      <a class="ss-user-logout" href="{% url 'login' %}" title="Sign in" aria-label="Sign in">
+        <svg class="ss-icon"><use href="#icon-log-in"></use></svg>
+      </a>
+      {% else %}
       <a class="ss-user-logout" href="{% url 'logout' %}" title="Log out" aria-label="Log out">
         <svg class="ss-icon"><use href="#icon-log-out"></use></svg>
       </a>
+      {% endif %}
     </div>
   </div>
 </aside>

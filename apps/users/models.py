@@ -18,6 +18,11 @@ class Profile(models.Model):
         settings.AUTH_USER_MODEL, related_name='profile', on_delete=models.CASCADE
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_STUDENT)
+    is_guest = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='Temporary account created automatically for signed-out visitors.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

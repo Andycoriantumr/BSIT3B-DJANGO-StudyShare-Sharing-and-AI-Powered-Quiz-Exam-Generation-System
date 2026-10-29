@@ -9,7 +9,8 @@
   <title>{% block title %}StudyShare{% endblock %}</title>
   <link rel="preconnect" href="https://rsms.me/">
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-  <link rel="stylesheet" href="{% static 'css/chat-dashboard.css' %}">
+  <link rel="stylesheet" href="{% static 'css/chat-dashboard.css' %}?v=20261029f">
+  <link rel="stylesheet" href="{% static 'css/tabler.css' %}">
   <link rel="stylesheet" href="{% static 'css/app-dark.css' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
@@ -17,7 +18,7 @@
   <main class="ss-auth">
     <section class="ss-auth-panel">
       <div class="ss-auth-shell">
-        <a class="ss-auth-brand" href="{% url 'login' %}" title="StudyShare">
+        <a class="ss-auth-brand" href="{% url 'dashboard' %}" title="StudyShare">
           <span class="ss-brand-mark">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>

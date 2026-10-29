@@ -33,6 +33,15 @@ GENERIC_DISTRACTORS = [
 VALID_PROVIDERS = ('auto', 'local', 'openai', 'gemini', 'openrouter')
 
 
+def _output_token_budget(num_questions):
+    """Give larger quizzes enough room for their JSON answer."""
+    return min(8192, max(2000, int(num_questions) * 180))
+
+
+def _provider_timeout(num_questions, minimum=40, maximum=60):
+    return min(maximum, max(minimum, int(num_questions) * 2))
+
+
 def _cfg(name, default=''):
     """Read a setting first; only fall back to os.environ when it is absent.
 
@@ -233,7 +242,7 @@ def _generate_with_openai(source_text, num_questions, question_type, api_key, mo
             {'role': 'user', 'content': prompt},
         ],
         'temperature': 0.7,
-        'max_tokens': 2000,
+        'max_tokens': _output_token_budget(num_questions),
     }).encode('utf-8')
     req = urllib.request.Request(
         'https://api.openai.com/v1/chat/completions',
@@ -244,7 +253,9 @@ def _generate_with_openai(source_text, num_questions, question_type, api_key, mo
         },
         method='POST',
     )
-    with urllib.request.urlopen(req, timeout=40) as resp:
+    with urllib.request.urlopen(
+        req, timeout=_provider_timeout(num_questions)
+    ) as resp:
         data = json.loads(resp.read().decode('utf-8'))
     content = data['choices'][0]['message']['content'].strip()
     return _parse_json_list(content, num_questions)
@@ -268,7 +279,7 @@ def _generate_with_gemini(source_text, num_questions, question_type, api_key, mo
             'contents': [{'parts': [{'text': prompt}]}],
             'generationConfig': {
                 'temperature': 0.7,
-                'maxOutputTokens': 2000,
+                'maxOutputTokens': _output_token_budget(num_questions),
                 # Leave the full budget for the JSON answer.
                 'thinkingConfig': {'thinkingBudget': 0},
             },
@@ -284,7 +295,9 @@ def _generate_with_gemini(source_text, num_questions, question_type, api_key, mo
             method='POST',
         )
         try:
-            with urllib.request.urlopen(req, timeout=40) as resp:
+            with urllib.request.urlopen(
+                req, timeout=_provider_timeout(num_questions)
+            ) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
         except urllib.error.HTTPError as e:
             try:
@@ -320,7 +333,7 @@ def _generate_with_openrouter(source_text, num_questions, question_type, api_key
             {'role': 'user', 'content': prompt},
         ],
         'temperature': 0.7,
-        'max_tokens': 2000,
+        'max_tokens': _output_token_budget(num_questions),
     }).encode('utf-8')
     headers = {
         'Content-Type': 'application/json',
@@ -336,7 +349,9 @@ def _generate_with_openrouter(source_text, num_questions, question_type, api_key
         'https://openrouter.ai/api/v1/chat/completions',
         data=payload, headers=headers, method='POST',
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(
+        req, timeout=_provider_timeout(num_questions, minimum=60)
+    ) as resp:
         data = json.loads(resp.read().decode('utf-8'))
     content = data['choices'][0]['message']['content'].strip()
     return _parse_json_list(content, num_questions)
@@ -395,12 +410,15 @@ def _generate_local(source_text, num_questions, question_type):
     questions = []
     for i in range(num_questions):
         sent = sentences[i % len(sentences)]
+        variant = i // len(sentences)
         if question_type in order_map:
             kind = question_type
         else:
             kind = ['mcq', 'true_false', 'short_answer', 'essay'][i % 4]
         if kind == 'mcq':
-            questions.append(_make_mcq(sent, keywords, source_text, i))
+            questions.append(
+                _make_mcq(sent, keywords, source_text, i, variant)
+            )
         elif kind == 'true_false':
             questions.append(_make_tf(sent, i))
         elif kind == 'short_answer':
@@ -410,9 +428,21 @@ def _generate_local(source_text, num_questions, question_type):
     return questions
 
 
-def _make_mcq(sentence, keywords, full_text, i):
+_MCQ_PROMPTS = (
+    'Which term best completes the statement? "{}"',
+    'Fill in the blank: "{}"',
+    'Which word is missing from this statement? "{}"',
+    'Choose the word that correctly completes this sentence: "{}"',
+    'Based on the notes, which term belongs in the blank? "{}"',
+)
+
+
+def _make_mcq(sentence, keywords, full_text, i, variant=0):
     key_terms = _keywords(sentence)
-    answer = key_terms[0] if key_terms else 'the main concept'
+    answer = (
+        key_terms[variant % len(key_terms)]
+        if key_terms else 'the main concept'
+    )
     distractors = [k for k in keywords if k.lower() != answer.lower()][:3]
     while len(distractors) < 3:
         cand = GENERIC_DISTRACTORS[len(distractors) % len(GENERIC_DISTRACTORS)]
@@ -422,11 +452,13 @@ def _make_mcq(sentence, keywords, full_text, i):
             break
     options = [answer] + distractors[:3]
     # Deterministic rotation so the answer is not always first.
-    options = options[1:] + options[:1] if i % 2 else options
+    shift = variant % len(options)
+    options = options[shift:] + options[:shift]
     blanked = sentence.replace(answer, '_____', 1) if answer in sentence else sentence
+    prompt = _MCQ_PROMPTS[variant % len(_MCQ_PROMPTS)]
     return {
         'question_type': 'mcq',
-        'question_text': f'Which term best completes the statement? "{blanked}"',
+        'question_text': prompt.format(blanked),
         'options': options[:4],
         'correct_answer': answer,
         'explanation': f'Based on the notes: "{sentence[:220]}"',

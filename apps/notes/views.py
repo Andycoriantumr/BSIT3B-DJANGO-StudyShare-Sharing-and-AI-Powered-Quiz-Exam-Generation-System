@@ -8,8 +8,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.chat.models import ChatQuizAttempt, MessageAttachment
 from apps.users.models import Profile
-from apps.users.roles import can_admin, can_moderate, get_user_role
+from apps.users.roles import can_admin, can_moderate
 
 from .forms import NoteForm, ReportForm, SubjectForm
 from .models import Note, NoteRating, NoteReport, Question, QuizAttempt, QuizSet, Subject
@@ -86,70 +87,12 @@ def _can_view_note(user, note):
     return True
 
 
-def _filtered_notes(request):
-    qs = Note.objects.select_related('uploaded_by').annotate(
-        avg_score=Avg('ratings__score'), num_ratings=Count('ratings', distinct=True),
-        num_quizzes=Count('quiz_sets', distinct=True),
-    )
-    role = get_user_role(request.user)
-    # Students see approved/public notes + their own. Moderators/admins see all.
-    if not can_moderate(request.user):
-        qs = qs.filter(
-            Q(status=Note.STATUS_APPROVED, is_public=True) | Q(uploaded_by=request.user)
-        )
-
-    q = request.GET.get('q', '').strip()
-    subject = request.GET.get('subject', '').strip()
-    instructor = request.GET.get('instructor', '').strip()
-    topic = request.GET.get('topic', '').strip()
-    school_year = request.GET.get('school_year', '').strip()
-    mine = request.GET.get('mine', '').strip()
-    status = request.GET.get('status', '').strip()
-    sort = request.GET.get('sort', '-created_at')
-
-    if q:
-        qs = qs.filter(
-            Q(title__icontains=q) | Q(description__icontains=q)
-            | Q(content__icontains=q) | Q(subject__icontains=q)
-            | Q(instructor__icontains=q) | Q(topic__icontains=q)
-        )
-    if subject:
-        qs = qs.filter(subject__iexact=subject)
-    if instructor:
-        qs = qs.filter(instructor__icontains=instructor)
-    if topic:
-        qs = qs.filter(topic__icontains=topic)
-    if school_year:
-        qs = qs.filter(school_year__iexact=school_year)
-    if mine == '1':
-        qs = qs.filter(uploaded_by=request.user)
-    if status in ('pending', 'approved', 'rejected') and can_moderate(request.user):
-        qs = qs.filter(status=status)
-
-    if sort == 'top':
-        qs = qs.order_by('-avg_score', '-num_ratings', '-created_at')
-    elif sort == 'oldest':
-        qs = qs.order_by('created_at')
-    else:
-        qs = qs.order_by('-created_at')
-    return qs, {'q': q, 'subject': subject, 'instructor': instructor,
-                'topic': topic, 'school_year': school_year, 'mine': mine,
-                'sort': sort, 'status': status, 'role': role}
-
-
 @login_required(login_url='login')
 def note_list(request):
-    qs, filters = _filtered_notes(request)
-    paginator = Paginator(qs, 9)
-    notes = paginator.get_page(request.GET.get('page', 1))
     context = {
-        'notes': notes,
-        'filters': filters,
-        'subjects': Subject.objects.filter(is_active=True).order_by('name')[:100],
-        'subject_names': list(
-            Note.objects.values_list('subject', flat=True).distinct().order_by('subject')[:50]
-        ),
-        'school_years': Note.objects.values_list('school_year', flat=True).distinct().order_by('school_year')[:50],
+        'uploaded_files': MessageAttachment.objects.filter(
+            message__conversation__user=request.user
+        ).select_related('message__conversation').order_by('-created_at'),
     }
     return render(request, 'notes/list.html', context)
 
@@ -184,7 +127,10 @@ def note_detail(request, pk):
 
 @login_required(login_url='login')
 def note_create(request):
-    # Student: upload notes. Instructor/Admin: same.
+    if request.method == 'GET':
+        return redirect('dashboard')
+
+    # Keep existing note POSTs compatible while uploads move to chat.
     if request.method == 'POST':
         form = NoteForm(request.POST, request.FILES)
         if form.is_valid():
@@ -202,10 +148,10 @@ def note_create(request):
             else:
                 messages.success(request, f'Note "{note.title}" uploaded.')
             return redirect('notes:note_detail', pk=note.pk)
+        messages.error(request, 'The note could not be uploaded. Check the required fields and try again.')
+        return redirect('dashboard')
     else:
-        form = NoteForm()
-    subjects = Subject.objects.filter(is_active=True).order_by('name')
-    return render(request, 'notes/form.html', {'form': form, 'mode': 'create', 'subjects': subjects})
+        return redirect('dashboard')
 
 
 @login_required(login_url='login')
@@ -561,17 +507,23 @@ def attempt_detail(request, attempt_id):
 
 @login_required(login_url='login')
 def my_progress(request):
-    attempts = QuizAttempt.objects.filter(taker=request.user).select_related('quiz__note').order_by('-submitted_at')
-    paginator = Paginator(attempts, 15)
-    page = paginator.get_page(request.GET.get('page', 1))
-    total_taken = attempts.count()
-    avg = attempts.aggregate(a=Avg('percentage'))['a'] or 0
-    best = attempts.order_by('-percentage').first()
+    chat_attempts = ChatQuizAttempt.objects.filter(
+        taker=request.user
+    ).select_related('message__conversation').order_by('-submitted_at')
+    chat_attempt_stats = chat_attempts.aggregate(
+        avg=Avg('percentage'), count=Count('pk')
+    )
+    total_taken = chat_attempt_stats['count']
+    avg = chat_attempt_stats['avg'] or 0
+    best = chat_attempts.order_by('-percentage').first()
     notes_uploaded = Note.objects.filter(uploaded_by=request.user).count()
     ratings_given = NoteRating.objects.filter(user=request.user).count()
     quizzes_created = QuizSet.objects.filter(created_by=request.user).count()
     return render(request, 'notes/progress.html', {
-        'attempts': page, 'total_taken': total_taken, 'avg_score': round(avg, 2),
+        'chat_attempts': Paginator(chat_attempts, 15).get_page(
+            request.GET.get('chat_page', 1)
+        ),
+        'total_taken': total_taken, 'avg_score': round(avg, 2),
         'best': best, 'notes_uploaded': notes_uploaded,
         'ratings_given': ratings_given, 'quizzes_created': quizzes_created,
     })
@@ -586,10 +538,11 @@ def my_progress(request):
 def system_analytics(request):
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    users_total = User.objects.count()
+    real_users = User.objects.exclude(profile__is_guest=True)
+    users_total = real_users.count()
     by_role = {
         r['profile__role']: r['c']
-        for r in User.objects.values('profile__role').annotate(c=Count('id')).values('profile__role', 'c')
+        for r in real_users.values('profile__role').annotate(c=Count('id')).values('profile__role', 'c')
     }
     notes_total = Note.objects.count()
     notes_by_status = {
@@ -716,19 +669,14 @@ def exam_builder(request):
 
 @login_required(login_url='login')
 def exam_list(request):
-    qs = QuizSet.objects.filter(is_exam=True).select_related('note', 'created_by')
-    q = request.GET.get('q', '').strip()
-    subject = request.GET.get('subject', '').strip()
-    if q:
-        qs = qs.filter(Q(title__icontains=q) | Q(exam_subject__icontains=q))
-    if subject:
-        qs = qs.filter(exam_subject__iexact=subject)
-    qs = qs.order_by('-created_at')
-    paginator = Paginator(qs, 10)
-    exams = paginator.get_page(request.GET.get('page', 1))
-    subjects = Subject.objects.filter(is_active=True).order_by('name')
+    chat_attempts = ChatQuizAttempt.objects.filter(
+        taker=request.user
+    ).select_related('message__conversation').order_by('-submitted_at')
+    chat_attempts_page = Paginator(chat_attempts, 10).get_page(
+        request.GET.get('chat_page', 1)
+    )
     return render(request, 'notes/exam_list.html', {
-        'exams': exams, 'q': q, 'subject': subject, 'subjects': subjects,
+        'chat_attempts': chat_attempts_page,
     })
 
 

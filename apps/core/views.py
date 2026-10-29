@@ -10,6 +10,13 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
+from apps.users.guests import (
+    display_identity,
+    is_guest,
+    merge_guest_data,
+    upgrade_guest_user,
+)
+
 User = get_user_model()
 
 MAX_FAILED_ATTEMPTS = 5
@@ -51,7 +58,7 @@ def _set_lock_state(request):
     return int(LOCK_DURATION.total_seconds())
 
 
-def _validate_registration_data(data):
+def _validate_registration_data(data, exclude_user=None):
     errors = {}
 
     username = data.get('username', '').strip()
@@ -61,9 +68,15 @@ def _validate_registration_data(data):
     password = data.get('password', '')
     confirm_password = data.get('confirm_password', '')
 
+    username_qs = User.objects.all()
+    email_qs = User.objects.all()
+    if exclude_user is not None:
+        username_qs = username_qs.exclude(pk=exclude_user.pk)
+        email_qs = email_qs.exclude(pk=exclude_user.pk)
+
     if not username:
         errors['username'] = 'Username is required.'
-    elif User.objects.filter(username=username).exists():
+    elif username_qs.filter(username=username).exists():
         errors['username'] = 'Username already taken.'
 
     if not first_name:
@@ -80,7 +93,7 @@ def _validate_registration_data(data):
         except ValidationError:
             errors['email'] = 'Enter a valid email address.'
         else:
-            if User.objects.filter(email=email).exists():
+            if email_qs.filter(email=email).exists():
                 errors['email'] = 'Email already registered.'
 
     if not password:
@@ -101,16 +114,20 @@ def _validate_registration_data(data):
 
 @require_http_methods(['GET', 'POST'])
 def login_view(request):
-    if request.user.is_authenticated:
+    current_is_guest = is_guest(request.user)
+    if request.user.is_authenticated and not current_is_guest:
         return redirect('dashboard')
 
+    login_context = {'current_is_guest': current_is_guest}
     failed_attempts, remaining = _get_lock_state(request)
     if remaining is not None:
         messages.error(request, f'Too many failed attempts. Try again in {remaining} seconds.')
-        return render(request, 'auth/login.html', {'locked': True, 'remaining': remaining})
+        return render(request, 'auth/login.html', {
+            **login_context, 'locked': True, 'remaining': remaining,
+        })
 
     if request.method == 'GET':
-        return render(request, 'auth/login.html')
+        return render(request, 'auth/login.html', login_context)
 
     username = request.POST.get('username', '').strip()
     password = request.POST.get('password', '')
@@ -118,7 +135,16 @@ def login_view(request):
 
     if user is not None:
         _reset_lock_state(request)
-        login(request, user)
+        if current_is_guest and user.pk != request.user.pk:
+            merge_guest_data(request.user, user)
+            login(request, user)
+            messages.success(
+                request,
+                'Signed in. Your guest chats and quizzes were moved to this '
+                'account.',
+            )
+        else:
+            login(request, user)
         return redirect('dashboard')
 
     failed_attempts += 1
@@ -126,11 +152,13 @@ def login_view(request):
     if failed_attempts >= MAX_FAILED_ATTEMPTS:
         remaining = _set_lock_state(request)
         messages.error(request, LOCKED_MESSAGE)
-        return render(request, 'auth/login.html', {'locked': True, 'remaining': remaining})
+        return render(request, 'auth/login.html', {
+            **login_context, 'locked': True, 'remaining': remaining,
+        })
 
     remaining_attempts = MAX_FAILED_ATTEMPTS - failed_attempts
     messages.error(request, f'{INVALID_LOGIN_MESSAGE} {remaining_attempts} attempts remaining.')
-    return render(request, 'auth/login.html')
+    return render(request, 'auth/login.html', login_context)
 
 
 def logout_view(request):
@@ -138,15 +166,21 @@ def logout_view(request):
     return redirect('login')
 
 
+def home_redirect(request):
+    """Keep the old /home/ address working after the dashboard moved to /."""
+    return redirect('dashboard')
+
+
 @login_required(login_url='login')
 def home(request):
     from django.db.models import Avg
 
-    from apps.chat.models import Conversation
+    from apps.chat.selectors import recent_conversations
     from apps.notes.models import Note, QuizAttempt, QuizSet, Subject
     from apps.users.roles import can_admin, can_moderate, ensure_profile
 
     ensure_profile(request.user)
+    guest_session = is_guest(request.user)
     stats = {
         'my_notes': Note.objects.filter(uploaded_by=request.user).count(),
         'quizzes_total': QuizSet.objects.count(),
@@ -156,13 +190,10 @@ def home(request):
     }
     stats['my_avg'] = round(stats['my_avg'], 2)
 
-    display_name = request.user.get_full_name().strip() or request.user.username
-    initials = ''.join(part[0] for part in display_name.split()[:2]).upper() or request.user.username[:1].upper()
+    display_name, initials = display_identity(request.user)
 
     sidebar_subjects = Subject.objects.filter(is_active=True).order_by('name')[:3]
-    sidebar_conversations = list(
-        Conversation.objects.filter(user=request.user).order_by('-updated_at')[:6]
-    )
+    sidebar_conversations = recent_conversations(request.user)
 
     return render(request, 'home.html', {
         'stats': stats,
@@ -171,6 +202,7 @@ def home(request):
         'active_conversation': None,
         'display_name': display_name,
         'initials': initials,
+        'is_guest': guest_session,
         'can_moderate': can_moderate(request.user),
         'can_admin': can_admin(request.user),
     })
@@ -178,11 +210,13 @@ def home(request):
 
 @require_http_methods(['GET', 'POST'])
 def register_view(request):
-    if request.user.is_authenticated:
+    current_is_guest = is_guest(request.user)
+    if request.user.is_authenticated and not current_is_guest:
         return redirect('dashboard')
 
+    register_context = {'current_is_guest': current_is_guest}
     if request.method == 'GET':
-        return render(request, 'auth/register.html')
+        return render(request, 'auth/register.html', register_context)
 
     form_data = {
         'username': request.POST.get('username', ''),
@@ -193,16 +227,42 @@ def register_view(request):
         'confirm_password': request.POST.get('confirm_password', ''),
     }
 
-    errors = _validate_registration_data(form_data)
-    if errors:
-        return render(request, 'auth/register.html', {'errors': errors, 'form_data': form_data})
-
-    user = User.objects.create_user(
-        username=form_data['username'].strip(),
-        first_name=form_data['first_name'].strip(),
-        last_name=form_data['last_name'].strip(),
-        email=form_data['email'].strip(),
-        password=form_data['password'],
+    errors = _validate_registration_data(
+        form_data,
+        exclude_user=request.user if current_is_guest else None,
     )
-    login(request, user)
+    if errors:
+        return render(request, 'auth/register.html', {
+            **register_context, 'errors': errors, 'form_data': form_data,
+        })
+
+    if current_is_guest:
+        user = upgrade_guest_user(
+            request.user,
+            username=form_data['username'].strip(),
+            first_name=form_data['first_name'].strip(),
+            last_name=form_data['last_name'].strip(),
+            email=form_data['email'].strip(),
+            password=form_data['password'],
+        )
+        # Password changed, so refresh the session auth hash in place.
+        login(
+            request,
+            user,
+            backend='django.contrib.auth.backends.ModelBackend',
+        )
+        messages.success(
+            request,
+            'Your account is ready. Everything you created as a guest is '
+            'still here.',
+        )
+    else:
+        user = User.objects.create_user(
+            username=form_data['username'].strip(),
+            first_name=form_data['first_name'].strip(),
+            last_name=form_data['last_name'].strip(),
+            email=form_data['email'].strip(),
+            password=form_data['password'],
+        )
+        login(request, user)
     return redirect('dashboard')

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{ conversation.title }} — Shared StudyShare chat</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #202124; }
+    body { max-width: 860px; margin: 0 auto; padding: 32px 20px; background: #f7f8fa; }
+    header, article, .notice { padding: 20px; border: 1px solid #e1e4e8; border-radius: 12px; background: #fff; }
+    header { margin-bottom: 16px; }
+    h1 { margin: 0 0 6px; font-size: 1.5rem; overflow-wrap: anywhere; }
+    .notice { margin: 0 0 20px; background: #fff8e6; border-color: #f0dfab; }
+    article { margin: 12px 0; overflow-wrap: anywhere; }
+    article h2 { margin: 0 0 12px; font-size: .9rem; color: #59636e; }
+    article p { white-space: pre-wrap; }
+    .question { padding: 12px 0; border-top: 1px solid #e7e9ec; }
+    .question:first-child { border-top: 0; }
+    .question ul { margin-bottom: 0; }
+    @media print { body { max-width: none; padding: 0; background: #fff; } .notice { background: #fff; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{ conversation.title }}</h1>
+    <div>Shared StudyShare conversation</div>
+  </header>
+  <p class="notice">Anyone with this link can view this conversation. Uploaded attachments and private quiz answer keys are not shared.</p>
+  {% for message in conversation.messages.all %}
+  <article>
+    <h2>{{ message.get_role_display }}</h2>
+    {% if message.content %}<p>{{ message.content }}</p>{% endif %}
+    {% if message.quiz_data %}
+    <section aria-label="Practice quiz">
+      <h2>Practice quiz</h2>
+      {% for question in message.quiz_data %}
+      <div class="question">
+        <p><strong>{{ forloop.counter }}. {{ question.question_text }}</strong></p>
+        {% if question.options %}
+        <ul>{% for option in question.options %}<li>{{ option }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </article>
+  {% empty %}
+  <p>This conversation has no messages.</p>
+  {% endfor %}
+</body>
+</html>

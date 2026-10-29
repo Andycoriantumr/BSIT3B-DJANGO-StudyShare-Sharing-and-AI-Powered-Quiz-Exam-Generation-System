@@ -16,6 +16,13 @@ def _can_manage_users(user):
     return can_admin(user)
 
 
+def _managed_users():
+    """Registered accounts only; transparent guest users stay hidden."""
+    return User.objects.select_related('profile').exclude(
+        profile__is_guest=True
+    )
+
+
 # PAGE
 @login_required(login_url='login')
 @user_passes_test(_can_manage_users, login_url='dashboard')
@@ -23,7 +30,7 @@ def user_list_page(request):
     query = request.GET.get('q', '').strip()
     role = request.GET.get('role', '').strip()
 
-    users_list = User.objects.select_related('profile').all().order_by('-date_joined')
+    users_list = _managed_users().order_by('-date_joined')
 
     if query:
         users_list = users_list.filter(
@@ -50,7 +57,7 @@ def user_list_page(request):
 @login_required(login_url='login')
 @user_passes_test(_can_manage_users, login_url='dashboard')
 def user_list_ajax(request):
-    users_list = User.objects.select_related('profile').all().order_by('-date_joined')
+    users_list = _managed_users().order_by('-date_joined')
     paginator = Paginator(users_list, 10)
     page_number = request.GET.get('page', 1)
     users = paginator.get_page(page_number)
@@ -81,7 +88,7 @@ def user_list_ajax(request):
 @login_required(login_url='login')
 @user_passes_test(_can_manage_users, login_url='dashboard')
 def user_get_ajax(request, pk):
-    user = get_object_or_404(User.objects.select_related('profile'), pk=pk)
+    user = get_object_or_404(_managed_users(), pk=pk)
     return JsonResponse({
         "id":         user.id,
         "username":   user.username,
@@ -102,7 +109,7 @@ def user_save_ajax(request):
     user_id = request.POST.get("id")
 
     if user_id:
-        user = get_object_or_404(User, pk=user_id)
+        user = get_object_or_404(_managed_users(), pk=user_id)
         is_update = True
     else:
         user = User()
@@ -173,7 +180,7 @@ def user_save_ajax(request):
 @user_passes_test(_can_manage_users, login_url='dashboard')
 @require_POST
 def user_delete_ajax(request, pk):
-    user = get_object_or_404(User, pk=pk)
+    user = get_object_or_404(_managed_users(), pk=pk)
     if request.user == user:
         return JsonResponse({"error": "You cannot delete yourself"}, status=400)
     username = user.username

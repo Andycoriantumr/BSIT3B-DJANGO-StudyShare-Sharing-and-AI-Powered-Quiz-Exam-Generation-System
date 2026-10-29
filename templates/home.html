@@ -6,6 +6,17 @@
 <main class="ss-main">
   <section class="ss-hero">
     <div class="ss-hero-inner">
+      {% if is_guest %}
+      <div class="ss-guest-banner" role="status">
+        <span class="ss-guest-banner-icon"><svg class="ss-icon"><use href="#icon-sparkles"></use></svg></span>
+        <p>You're studying as a guest. Chats and quizzes stay in this browser until you create an account.</p>
+        <span class="ss-guest-banner-actions">
+          <a class="ss-guest-banner-link" href="{% url 'register' %}">Create a free account</a>
+          <a class="ss-guest-banner-link ss-guest-banner-link--muted" href="{% url 'login' %}">Sign in</a>
+        </span>
+      </div>
+      {% endif %}
+
       <h1 class="ss-greeting">What's on the agenda today?</h1>
       <p class="ss-subgreeting">Ask about your notes, generate a quiz, or search what your classmates shared.</p>
 
@@ -15,16 +26,26 @@
         {% if ai_online %}{{ ai_provider_label }} connected{% else %}Offline note assistant{% endif %}
       </p>
 
-      <form class="ss-prompt" id="ssPromptForm" action="{% url 'chat:start' %}" method="post">
+      <form class="ss-prompt" id="ssPromptForm" action="{% url 'chat:start' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <input type="hidden" name="think" value="0" data-ss-think-input>
-        <a class="ss-prompt-plus" href="{% url 'notes:note_create' %}" title="Upload notes" aria-label="Upload notes">
-          <svg class="ss-icon"><use href="#icon-plus"></use></svg>
-        </a>
+        <div class="ss-attachment-control" data-ss-attachment-control>
+          <input class="ss-attachment-file" id="ssNewChatFiles" type="file" name="files" accept=".pdf,.txt,.md,.csv,.docx" multiple data-ss-file-input="files" aria-label="Choose files">
+          <label class="ss-prompt-plus" for="ssNewChatFiles" role="button" tabindex="0" title="Upload a file to generate practice questions" aria-label="Upload a file to generate practice questions">
+            <svg class="ss-icon"><use href="#icon-plus"></use></svg>
+          </label>
+        </div>
         <input class="ss-prompt-input" id="ssPromptInput" type="text" name="content"
                placeholder="Ask StudyShare" autocomplete="off"
                aria-label="Ask StudyShare">
+        <div class="ss-attachment-preview" data-ss-attachment-preview hidden></div>
         <div class="ss-prompt-tools">
+          <label class="ss-question-count" data-ss-question-count hidden title="Number of questions to generate (1-50)">
+            <span class="ss-question-count-label">Questions</span>
+            <input class="ss-question-count-input" type="number" name="question_count"
+                   min="1" max="50" step="1" value="10" inputmode="numeric"
+                   data-ss-question-count-input aria-label="Number of questions to generate (1 to 50)">
+          </label>
           <button class="ss-think" type="button" data-ss-think aria-pressed="false" title="Think before answering">
             <svg class="ss-icon"><use href="#icon-brain"></use></svg>
             <span>Think</span>

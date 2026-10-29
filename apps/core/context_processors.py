@@ -38,23 +38,19 @@ def studyshare_shell(request):
     if not user or not user.is_authenticated:
         return {}
 
-    from apps.chat.models import Conversation
+    from apps.chat.selectors import recent_conversations
     from apps.notes.models import Subject
+    from apps.users.guests import display_identity, is_guest
 
-    display_name = user.get_full_name().strip() or user.username
-    initials = (
-        ''.join(part[0] for part in display_name.split()[:2]).upper()
-        or user.username[:1].upper()
-    )
+    display_name, initials = display_identity(user)
     ai_provider = _active_ai_provider()
 
     return {
         'display_name': display_name,
         'initials': initials,
+        'is_guest': is_guest(user),
         'sidebar_subjects': Subject.objects.filter(is_active=True).order_by('name')[:3],
-        'sidebar_conversations': list(
-            Conversation.objects.filter(user=user).order_by('-updated_at')[:6]
-        ),
+        'sidebar_conversations': recent_conversations(user),
         'ai_provider': ai_provider,
         'ai_provider_label': PROVIDER_LABELS[ai_provider],
         'ai_online': ai_provider != 'local',

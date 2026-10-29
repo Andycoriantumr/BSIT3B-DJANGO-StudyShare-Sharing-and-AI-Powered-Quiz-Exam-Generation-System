@@ -24,6 +24,70 @@
     }, 2600);
   }
 
+  document.querySelectorAll("[data-share-form]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (form.dataset.hasShare !== "true" && !window.confirm(
+        "Anyone with the public link can view this conversation. Uploaded files and private quiz answer keys will not be shared. Continue?"
+      )) {
+        return;
+      }
+
+      var button = form.querySelector("button[type='submit']");
+      if (button) {
+        button.disabled = true;
+      }
+      fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      }).then(function (response) {
+        if (!response.ok) {
+          throw new Error("The public link could not be created.");
+        }
+        return response.json();
+      }).then(function (result) {
+        if (!result.ok || !result.share_url) {
+          throw new Error("The server did not return a share link.");
+        }
+        form.dataset.hasShare = "true";
+        if (button) {
+          button.textContent = "Copy public link";
+        }
+        var revokeForm = form.parentElement.querySelector("[data-revoke-form]");
+        if (revokeForm) {
+          revokeForm.hidden = false;
+        }
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          window.prompt("Copy this public link:", result.share_url);
+          showToast("Public link created.");
+          return;
+        }
+        return navigator.clipboard.writeText(result.share_url).then(function () {
+          showToast("Public link copied.");
+        }).catch(function () {
+          window.prompt("Copy this public link:", result.share_url);
+          showToast("Public link created; copy it from the dialog.");
+        });
+      }).catch(function (error) {
+        showToast(error.message || "Unable to create the public link.");
+      }).finally(function () {
+        if (button) {
+          button.disabled = false;
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll("form[data-confirm]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(form.dataset.confirm)) {
+        event.preventDefault();
+      }
+    });
+  });
+
   /* ------------------------------------------------------------ sidebar */
 
   var collapseBtn = document.querySelector("[data-ss-collapse]");
@@ -379,6 +443,392 @@
   var promptForm = document.getElementById("ssPromptForm");
   var promptInput = document.getElementById("ssPromptInput");
 
+  function initAttachmentControls() {
+    document.querySelectorAll("[data-ss-attachment-control]").forEach(function (control) {
+      var form = control.closest("form");
+      var preview = form ? form.querySelector("[data-ss-attachment-preview]") : null;
+      if (!preview) {
+        return;
+      }
+
+      function selectedFiles() {
+        var files = [];
+        control.querySelectorAll("[data-ss-file-input]").forEach(function (input) {
+          Array.prototype.forEach.call(input.files || [], function (file) {
+            files.push({
+              input: input,
+              file: file,
+            });
+          });
+        });
+        return files;
+      }
+
+      function renderPreview() {
+        var files = selectedFiles();
+        preview.replaceChildren();
+        preview.hidden = files.length === 0;
+        var countControl = form.querySelector("[data-ss-question-count]");
+        if (countControl) {
+          countControl.hidden = files.length === 0;
+        }
+        files.forEach(function (attachment, index) {
+          var chip = document.createElement("span");
+          chip.className = "ss-attachment-chip";
+          var label = document.createElement("span");
+          label.className = "ss-attachment-chip-label";
+          label.textContent = attachment.file.name;
+          chip.appendChild(label);
+
+          var remove = document.createElement("button");
+          remove.className = "ss-attachment-chip-remove";
+          remove.type = "button";
+          remove.setAttribute("aria-label", "Remove " + label.textContent);
+          remove.textContent = "×";
+          remove.addEventListener("click", function () {
+            if (window.DataTransfer) {
+              var nextFiles = new DataTransfer();
+              Array.prototype.forEach.call(attachment.input.files, function (file, fileIndex) {
+                if (fileIndex !== indexForInput(files, index, attachment.input)) {
+                  nextFiles.items.add(file);
+                }
+              });
+              attachment.input.files = nextFiles.files;
+            } else {
+              attachment.input.value = "";
+            }
+            renderPreview();
+          });
+          chip.appendChild(remove);
+          preview.appendChild(chip);
+        });
+      }
+
+      function indexForInput(files, currentIndex, input) {
+        var index = -1;
+        for (var i = 0; i <= currentIndex; i += 1) {
+          if (files[i].input === input) {
+            index += 1;
+          }
+        }
+        return index;
+      }
+
+      control.querySelectorAll("[data-ss-file-input]").forEach(function (input) {
+        input.addEventListener("change", renderPreview);
+      });
+      control.querySelectorAll("label[for]").forEach(function (label) {
+        label.addEventListener("keydown", function (event) {
+          if (event.key !== "Enter" && event.key !== " ") {
+            return;
+          }
+          var input = document.getElementById(label.getAttribute("for"));
+          if (input) {
+            event.preventDefault();
+            input.click();
+          }
+        });
+      });
+      form.addEventListener("reset", function () {
+        window.setTimeout(renderPreview, 0);
+      });
+      renderPreview();
+    });
+  }
+
+  initAttachmentControls();
+
+  /* -------------------------------------------------------- generated quiz */
+
+  function initQuizzes() {
+    document.querySelectorAll("[data-ss-quiz]").forEach(function (quiz) {
+      var form = quiz.querySelector("[data-ss-quiz-form]");
+      var scoreEl = quiz.querySelector("[data-ss-quiz-score]");
+      var submitBtn = quiz.querySelector(".ss-quiz-submit");
+      var retryBtn = quiz.querySelector("[data-ss-quiz-retry]");
+      if (!form || !scoreEl || !submitBtn) {
+        return;
+      }
+
+      function csrfToken() {
+        var input = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        return input ? input.value : "";
+      }
+
+      function answerInputs() {
+        return form.querySelectorAll("[data-ss-quiz-answer]");
+      }
+
+      function collectAnswers() {
+        var answers = {};
+        quiz.querySelectorAll("[data-ss-quiz-question]").forEach(function (question) {
+          var index = question.getAttribute("data-index");
+          var selected = question.querySelector('input[type="radio"]:checked');
+          if (selected) {
+            answers[index] = selected.value;
+            return;
+          }
+          var text = question.querySelector("[data-ss-quiz-answer]");
+          answers[index] = text ? text.value : "";
+        });
+        return answers;
+      }
+
+      function firstUnanswered() {
+        var missing = null;
+        quiz.querySelectorAll("[data-ss-quiz-question]").forEach(function (question) {
+          if (missing) {
+            return;
+          }
+          var radios = question.querySelectorAll('input[type="radio"]');
+          if (radios.length && !question.querySelector('input[type="radio"]:checked')) {
+            missing = question;
+          }
+        });
+        return missing;
+      }
+
+      function setBusy(busy) {
+        submitBtn.disabled = busy;
+        submitBtn.textContent = busy ? "Checking…" : "Submit answers";
+      }
+
+      function renderFeedback(question, item) {
+        question.classList.remove("is-correct", "is-incorrect", "is-review");
+        var feedback = question.querySelector("[data-ss-quiz-feedback]");
+        if (!feedback) {
+          return;
+        }
+        feedback.replaceChildren();
+        feedback.hidden = false;
+
+        var status = document.createElement("p");
+        status.className = "ss-quiz-feedback-status";
+        if (!item.graded) {
+          question.classList.add("is-review");
+          status.textContent = "Not auto-scored";
+        } else if (item.correct) {
+          question.classList.add("is-correct");
+          status.textContent = "Correct";
+        } else {
+          question.classList.add("is-incorrect");
+          status.textContent = "Incorrect";
+        }
+        feedback.appendChild(status);
+
+        if (item.answer) {
+          var answer = document.createElement("p");
+          answer.className = "ss-quiz-feedback-answer";
+          if (!item.graded) {
+            answer.textContent = "Reference answer: " + item.answer;
+          } else if (item.correct) {
+            answer.textContent = "Answer: " + item.answer;
+          } else {
+            answer.textContent = "Correct answer: " + item.answer;
+          }
+          feedback.appendChild(answer);
+        }
+
+        if (item.explanation) {
+          var explanation = document.createElement("p");
+          explanation.className = "ss-quiz-feedback-explanation";
+          explanation.textContent = "Explanation: " + item.explanation;
+          feedback.appendChild(explanation);
+        }
+      }
+
+      function renderScore(data) {
+        var percent = Number(data.percent) || 0;
+        var tone = !data.total
+          ? ""
+          : percent >= 80
+            ? "is-great"
+            : percent >= 50
+              ? "is-ok"
+              : "is-low";
+        scoreEl.hidden = false;
+        scoreEl.className = "ss-quiz-score" + (tone ? " " + tone : "");
+        scoreEl.replaceChildren();
+
+        var summary = document.createElement("span");
+        if (data.total) {
+          summary.textContent =
+            "You scored " + data.score + " / " + data.total +
+            " (" + percent + "%).";
+        } else {
+          summary.textContent = "Answer key unlocked.";
+        }
+        scoreEl.appendChild(summary);
+
+        var results = data.results || [];
+        var hasReview = results.some(function (item) { return !item.graded; });
+        if (hasReview) {
+          var note = document.createElement("p");
+          note.className = "ss-quiz-score-note";
+          note.textContent =
+            "Written answers are not auto-scored. Compare them with the answer key below.";
+          scoreEl.appendChild(note);
+        }
+
+        var progressLink = document.createElement("a");
+        progressLink.className = "ss-quiz-progress-link";
+        progressLink.href = quiz.getAttribute("data-progress-url");
+        progressLink.textContent = "View My Progress";
+        scoreEl.appendChild(progressLink);
+
+        results.forEach(function (item) {
+          var question = quiz.querySelector(
+            '[data-ss-quiz-question][data-index="' + item.index + '"]'
+          );
+          if (question) {
+            renderFeedback(question, item);
+          }
+        });
+
+        answerInputs().forEach(function (input) {
+          input.disabled = true;
+        });
+        submitBtn.hidden = true;
+        if (retryBtn) {
+          retryBtn.hidden = false;
+        }
+        scoreEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (!window.fetch) {
+          showToast("This browser cannot submit the quiz.");
+          return;
+        }
+        var missing = firstUnanswered();
+        if (missing) {
+          showToast("Answer every question before submitting.");
+          var first = missing.querySelector('input[type="radio"]');
+          if (first) {
+            first.focus();
+          }
+          missing.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+        setBusy(true);
+
+        fetch(quiz.getAttribute("data-grade-url"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken(),
+            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ answers: collectAnswers() }),
+        })
+          .then(function (response) {
+            return response.json().then(function (data) {
+              return { response: response, data: data };
+            });
+          })
+          .then(function (result) {
+            if (!result.response.ok || !result.data.ok) {
+              throw new Error(result.data.error || "Could not check the quiz.");
+            }
+            setBusy(false);
+            renderScore(result.data);
+          })
+          .catch(function (error) {
+            setBusy(false);
+            showToast(error.message || "Could not check the quiz.");
+          });
+      });
+
+      if (retryBtn) {
+        retryBtn.addEventListener("click", function () {
+          form.reset();
+          answerInputs().forEach(function (input) {
+            input.disabled = false;
+          });
+          quiz.querySelectorAll("[data-ss-quiz-question]").forEach(function (question) {
+            question.classList.remove("is-correct", "is-incorrect", "is-review");
+            var feedback = question.querySelector("[data-ss-quiz-feedback]");
+            if (feedback) {
+              feedback.hidden = true;
+              feedback.replaceChildren();
+            }
+          });
+          scoreEl.hidden = true;
+          scoreEl.className = "ss-quiz-score";
+          scoreEl.replaceChildren();
+          retryBtn.hidden = true;
+          submitBtn.hidden = false;
+          setBusy(false);
+          var first = form.querySelector("[data-ss-quiz-answer]");
+          if (first) {
+            first.focus();
+          }
+        });
+      }
+    });
+  }
+
+  initQuizzes();
+
+  function formHasAttachments(form) {
+    if (!form) {
+      return false;
+    }
+    return Array.prototype.some.call(
+      form.querySelectorAll("[data-ss-file-input]"),
+      function (input) { return input.files && input.files.length > 0; }
+    );
+  }
+
+  function normalizeQuestionCount(form) {
+    var input = form
+      ? form.querySelector("[data-ss-question-count-input]")
+      : null;
+    if (!input) {
+      return;
+    }
+    var count = parseInt(input.value, 10);
+    if (isNaN(count)) {
+      count = 10;
+    }
+    count = Math.max(1, Math.min(50, count));
+    input.value = String(count);
+  }
+
+  function attachmentLabels(form) {
+    var labels = [];
+    if (!form) {
+      return labels;
+    }
+    form.querySelectorAll("[data-ss-file-input]").forEach(function (input) {
+      Array.prototype.forEach.call(input.files || [], function (file) {
+        labels.push(file.name);
+      });
+    });
+    return labels;
+  }
+
+  function clearAttachments(form) {
+    if (!form) {
+      return;
+    }
+    form.querySelectorAll("[data-ss-file-input]").forEach(function (input) {
+      input.value = "";
+    });
+    var preview = form.querySelector("[data-ss-attachment-preview]");
+    if (preview) {
+      preview.replaceChildren();
+      preview.hidden = true;
+    }
+    var countControl = form.querySelector("[data-ss-question-count]");
+    if (countControl) {
+      countControl.hidden = true;
+    }
+  }
+
   function setPromptBusy(busy) {
     if (promptInput) {
       promptInput.disabled = busy;
@@ -394,7 +844,7 @@
 
   if (promptForm && promptInput) {
     promptForm.addEventListener("submit", function (event) {
-      if (!promptInput.value.trim()) {
+      if (!promptInput.value.trim() && !formHasAttachments(promptForm)) {
         event.preventDefault();
         promptInput.focus();
         return;
@@ -404,6 +854,7 @@
       }
 
       event.preventDefault();
+      normalizeQuestionCount(promptForm);
       var formData = new FormData(promptForm);
       setPromptBusy(true);
 
@@ -539,7 +990,7 @@
       }
     };
 
-    var buildMessage = function (role, content, provider) {
+    var buildMessage = function (role, content, provider, attachments) {
       var article = document.createElement("article");
       article.className = "ss-msg ss-msg--" + role;
 
@@ -574,6 +1025,18 @@
       body.setAttribute("data-markdown", "");
       body.innerHTML = renderMarkdown(content);
       main.appendChild(body);
+
+      if (role === "user" && attachments && attachments.length) {
+        var attachmentList = document.createElement("div");
+        attachmentList.className = "ss-msg-attachments";
+        attachments.forEach(function (name) {
+          var chip = document.createElement("span");
+          chip.className = "ss-msg-attachment";
+          chip.textContent = name;
+          attachmentList.appendChild(chip);
+        });
+        main.appendChild(attachmentList);
+      }
 
       if (role === "assistant") {
         var actions = document.createElement("div");
@@ -613,7 +1076,7 @@
         return;
       }
       var content = chatInput.value.trim();
-      if (!content) {
+      if (!content && !formHasAttachments(chatForm)) {
         event.preventDefault();
         chatInput.focus();
         return;
@@ -623,9 +1086,11 @@
       }
 
       event.preventDefault();
+      normalizeQuestionCount(chatForm);
       var formData = new FormData(chatForm);
+      var attachedLabels = attachmentLabels(chatForm);
       thread.insertBefore(
-        buildMessage("user", content, ""),
+        buildMessage("user", content, "", attachedLabels),
         typing || null
       );
       chatInput.value = "";
@@ -652,6 +1117,11 @@
               result.data.error || "The assistant could not answer."
             );
           }
+          if (result.data.reply.has_quiz) {
+            setChatBusy(false);
+            window.location.reload();
+            return;
+          }
           setChatBusy(false);
           thread.insertBefore(
             buildMessage(
@@ -664,6 +1134,7 @@
           if (titleEl && result.data.title) {
             titleEl.textContent = result.data.title;
           }
+          clearAttachments(chatForm);
           var metaEl = document.getElementById("ssChatMeta");
           if (metaEl) {
             var messageCount = thread.querySelectorAll(

@@ -6,6 +6,12 @@
 <h1 class="ss-auth-title">Welcome back</h1>
 <p class="ss-auth-sub">Sign in to open your notes, quizzes, and study chats.</p>
 
+{% if current_is_guest %}
+<div class="alert alert-info" role="status">
+  You're using a guest session. Signing in moves your guest chats and quizzes into your account.
+</div>
+{% endif %}
+
 {% if messages %}
   {% for message in messages %}
   <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% else %}alert-danger{% endif %}" role="alert">
@@ -45,6 +51,10 @@
     <i class="fas fa-sign-in-alt me-2" aria-hidden="true"></i>Sign in
   </button>
 </form>
+
+<a class="btn btn-outline-secondary ss-auth-submit mt-2" href="{% url 'dashboard' %}">
+  <i class="fas fa-arrow-right me-2" aria-hidden="true"></i>Continue as guest
+</a>
 
 <p class="ss-auth-alt">New to StudyShare? <a href="{% url 'register' %}">Create an account</a></p>
 {% endblock %}

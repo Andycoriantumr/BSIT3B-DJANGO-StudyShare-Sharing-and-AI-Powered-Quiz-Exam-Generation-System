@@ -47,13 +47,7 @@
         <li class="nav-item">
           <a class="nav-link {% if request.resolver_match.app_name == 'notes' and request.resolver_match.url_name == 'note_list' %}active{% endif %}" href="{% url 'notes:note_list' %}">
             <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-book-open"></i></span>
-            <span class="nav-link-title">Browse Notes</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="{% url 'notes:note_create' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-upload"></i></span>
-            <span class="nav-link-title">Upload Notes</span>
+            <span class="nav-link-title">Uploaded Notes</span>
           </a>
         </li>
         <li class="nav-item">
@@ -68,13 +62,6 @@
             <span class="nav-link-title">My Progress</span>
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.resolver_match.url_name == 'report_list' %}active{% endif %}" href="{% url 'notes:report_list' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-flag"></i></span>
-            <span class="nav-link-title">My Reports</span>
-          </a>
-        </li>
-
         {% if can_moderate %}
         <li class="nav-item">
           <span class="dh-nav-section">Instructor / Moderator</span>

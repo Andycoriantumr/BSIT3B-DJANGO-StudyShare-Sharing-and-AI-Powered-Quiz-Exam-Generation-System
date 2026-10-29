@@ -1,7 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.urls import reverse
 
+from apps.chat.models import Conversation, Message, MessageAttachment
 from apps.notes.models import Note, NoteRating, NoteReport, Question, QuizAttempt, QuizSet, Subject
 from apps.notes.services import build_exam_source, generate_quiz
 from apps.users.models import Profile
@@ -77,12 +80,61 @@ class NotesModelTests(TestCase):
         self.assertEqual(quiz.questions.count(), 3)
         self.assertEqual(quiz.provider, 'local')
 
-    def test_search_filter(self):
+    def test_uploaded_notes_page_lists_only_my_chat_attachments(self):
+        conversation = Conversation.objects.create(
+            user=self.user, title='My uploaded file'
+        )
+        message = Message.objects.create(
+            conversation=conversation,
+            role=Message.ROLE_USER,
+            content='Use this file.',
+        )
+        attachment = MessageAttachment.objects.create(
+            message=message,
+            original_name='my-study-guide.txt',
+            file=SimpleUploadedFile('my-study-guide.txt', b'My study guide.'),
+        )
+        self.addCleanup(attachment.file.delete, save=False)
+
+        other = get_user_model().objects.create_user(
+            username='file-owner', password='pass12345'
+        )
+        other_conversation = Conversation.objects.create(
+            user=other, title='Someone elses file'
+        )
+        other_message = Message.objects.create(
+            conversation=other_conversation,
+            role=Message.ROLE_USER,
+            content='Private upload.',
+        )
+        other_attachment = MessageAttachment.objects.create(
+            message=other_message,
+            original_name='private-study-guide.txt',
+            file=SimpleUploadedFile(
+                'private-study-guide.txt', b'Someone elses study guide.'
+            ),
+        )
+        self.addCleanup(other_attachment.file.delete, save=False)
+
         self.client.force_login(self.user)
-        resp = self.client.get('/notes/', {'q': 'photosynthesis'})
-        self.assertContains(resp, 'Photosynthesis Notes')
-        resp = self.client.get('/notes/', {'q': 'nonexistent-xyz'})
-        self.assertNotContains(resp, 'Photosynthesis Notes')
+        response = self.client.get(reverse('notes:note_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Uploaded Notes')
+        self.assertContains(response, 'My Uploaded Files')
+        self.assertNotContains(response, 'Shared Study Notes')
+        self.assertNotContains(response, 'Photosynthesis Notes')
+        self.assertContains(response, 'my-study-guide.txt')
+        self.assertContains(
+            response, reverse('chat:view_attachment', args=[attachment.pk])
+        )
+        self.assertContains(
+            response, reverse('chat:download_attachment', args=[attachment.pk])
+        )
+        self.assertContains(
+            response, reverse('chat:delete_attachment', args=[attachment.pk])
+        )
+        self.assertNotContains(response, 'private-study-guide.txt')
 
     def test_rate_view(self):
         self.client.force_login(self.other)
@@ -234,7 +286,9 @@ class QuizTakeTests(TestCase):
         # Detail + progress pages.
         self.assertEqual(self.client.get(f'/notes/attempts/{attempt.pk}/').status_code, 200)
         resp = self.client.get('/notes/progress/')
-        self.assertContains(resp, 'Q1')
+        self.assertContains(resp, 'Quiz Attempts')
+        self.assertNotContains(resp, 'Quiz Note')
+        self.assertEqual(resp.context['total_taken'], 0)
 
 
 @override_settings(GEMINI_API_KEY='', OPENAI_API_KEY='', OPENROUTER_API_KEY='')
@@ -403,8 +457,11 @@ class ExamAutomationTests(TestCase):
             'subject': 'Biology', 'max_notes': 2, 'num_questions': 3,
             'question_type': 'mcq', 'provider': 'local',
         })
+        self.assertTrue(QuizSet.objects.filter(is_exam=True).exists())
         resp = self.client.get('/notes/exams/')
-        self.assertContains(resp, 'Exam — Biology')
+        self.assertContains(resp, 'My Quizzes')
+        self.assertNotContains(resp, 'Generated Exams')
+        self.assertNotContains(resp, 'Exam — Biology')
 
     def test_answers_locked_until_submitted(self):
         taker = User.objects.create_user(username='locktaker', password='pass12345')
