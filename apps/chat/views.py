@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.chat.services import _read_chat_file_text
 from apps.notes.models import Subject
 from apps.users.guests import display_identity
 
@@ -100,6 +101,16 @@ def _serve_chat_attachment(request, pk, as_attachment):
 @login_required(login_url='login')
 @require_GET
 def view_attachment(request, pk):
+    attachment = get_object_or_404(
+        MessageAttachment.objects.select_related('message__conversation'),
+        pk=pk,
+        message__conversation__user=request.user,
+    )
+    if attachment.original_name.lower().endswith('.docx'):
+        return render(request, 'chat/attachment_preview.html', {
+            'attachment': attachment,
+            'preview_text': _read_chat_file_text(attachment),
+        })
     return _serve_chat_attachment(request, pk, as_attachment=False)
 
 

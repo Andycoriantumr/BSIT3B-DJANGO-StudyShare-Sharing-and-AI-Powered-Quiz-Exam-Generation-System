@@ -184,7 +184,7 @@ class ChatWorkflowTests(TestCase):
         )
         self.addCleanup(attachment.file.delete, save=False)
 
-    def test_docx_attachment_is_served_with_word_content_type(self):
+    def test_docx_attachment_view_shows_preview_and_can_still_be_downloaded(self):
         conversation = Conversation.objects.create(
             user=self.user, title='DOCX upload'
         )
@@ -207,12 +207,25 @@ class ChatWorkflowTests(TestCase):
             reverse('chat:view_attachment', args=[attachment.pk])
         )
 
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Study guide content.')
+        self.assertContains(response, 'Download original')
+
+        download_response = self.client.get(
+            reverse('chat:download_attachment', args=[attachment.pk])
+        )
         self.assertEqual(
-            response['Content-Type'],
+            download_response['Content-Type'],
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         )
-        self.assertIn('nosniff', response['X-Content-Type-Options'])
-        response.close()
+        self.assertIn('attachment', download_response['Content-Disposition'])
+        with zipfile.ZipFile(
+            io.BytesIO(b''.join(download_response.streaming_content))
+        ) as downloaded_docx:
+            self.assertIn(
+                'Study guide content.',
+                downloaded_docx.read('word/document.xml').decode(),
+            )
 
     @patch(
         'apps.chat.views.generate_attachment_questions',

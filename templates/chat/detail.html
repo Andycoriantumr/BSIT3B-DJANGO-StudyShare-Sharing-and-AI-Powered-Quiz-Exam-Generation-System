@@ -42,7 +42,7 @@
             {% for attachment in message.attachments.all %}
             <span class="ss-msg-attachment">
               <svg class="ss-icon"><use href="#icon-file-text"></use></svg>
-              <a href="{% url 'chat:view_attachment' attachment.pk %}" target="_blank" rel="noopener">{{ attachment.original_name }}</a>
+              <a href="{% url 'chat:view_attachment' attachment.pk %}">{{ attachment.original_name }}</a>
               <a href="{% url 'chat:download_attachment' attachment.pk %}">Download</a>
             </span>
             {% endfor %}

@@ -20,12 +20,6 @@
       <h1 class="ss-greeting">What's on the agenda today?</h1>
       <p class="ss-subgreeting">Ask about your notes, generate a quiz, or search what your classmates shared.</p>
 
-      <p class="ss-ai-status ss-ai-status--{{ ai_provider }}"
-         title="{% if ai_online %}{{ ai_provider_label }} is powering StudyShare AI{% else %}Add an API key to .env for full AI answers{% endif %}">
-        <span class="ss-ai-dot" aria-hidden="true"></span>
-        {% if ai_online %}{{ ai_provider_label }} connected{% else %}Offline note assistant{% endif %}
-      </p>
-
       <form class="ss-prompt" id="ssPromptForm" action="{% url 'chat:start' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <input type="hidden" name="think" value="0" data-ss-think-input>
@@ -60,19 +54,9 @@
       </form>
 
       <div class="ss-suggestions">
-        <button class="ss-suggestion" type="button" data-ss-prefill="Explain the key concepts in my notes">
-          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-sparkles"></use></svg></span>
-          <span>Explain a topic from my notes</span>
-          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
-        </button>
         <a class="ss-suggestion" href="{% url 'notes:exam_builder' %}">
           <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-pen"></use></svg></span>
           <span>Create a quiz from your notes</span>
-          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
-        </a>
-        <a class="ss-suggestion" href="{% url 'notes:note_list' %}">
-          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-globe"></use></svg></span>
-          <span>Search shared notes and topics</span>
           <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
         </a>
       </div>

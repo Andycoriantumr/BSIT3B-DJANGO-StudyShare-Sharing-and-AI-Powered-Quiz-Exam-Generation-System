@@ -1,0 +1,23 @@
+{% extends "theme/base.html" %}
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="row align-items-center">
+    <div class="col">
+      <div class="page-pretitle">Uploaded file</div>
+      <h2 class="page-title">{{ attachment.original_name|default:"Uploaded file" }}</h2>
+    </div>
+    <div class="col-auto">
+      <a class="btn btn-outline-primary" href="{% url 'chat:download_attachment' attachment.pk %}">Download original</a>
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-body">
+    {% if preview_text %}
+    <div class="border rounded p-3 bg-light" style="white-space: pre-wrap">{{ preview_text }}</div>
+    {% else %}
+    <p class="text-muted mb-0">A text preview is unavailable for this document. You can download the original file.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
