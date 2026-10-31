@@ -52,7 +52,9 @@ role-based views, sign in with a demo account:
 
 | Role | Username | Password |
 |---|---|---|
-| Student | `andy` | `Andy123456` |
+| User | `andy` | `Andy123456` |
+| User | `rino` | `Rino123456` |
+| User | `jerald` | `Jerald123456` |
 
 `seed_demo` is idempotent: it creates or repairs the demo student account, then
 calls `seed_examples` to add 10 notes, 10 quizzes, and 2 exams. Use
