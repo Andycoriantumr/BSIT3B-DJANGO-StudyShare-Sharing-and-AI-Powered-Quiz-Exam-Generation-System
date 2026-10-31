@@ -266,6 +266,58 @@ class ChatWorkflowTests(TestCase):
         attachment = MessageAttachment.objects.get()
         self.addCleanup(attachment.file.delete, save=False)
 
+    @patch(
+        'apps.chat.views.generate_attachment_questions',
+        return_value={
+            'content': 'Answer the quiz below.',
+            'provider': 'local',
+            'questions': [],
+        },
+    )
+    def test_start_chat_accepts_five_files_at_once(self, mocked_questions):
+        files = [
+            SimpleUploadedFile(
+                f'lesson-{index}.txt',
+                f'Lesson content {index}.'.encode(),
+                content_type='text/plain',
+            )
+            for index in range(5)
+        ]
+
+        response = self.client.post(
+            reverse('chat:start'),
+            {'files': files},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user_message = Message.objects.get(role=Message.ROLE_USER)
+        self.assertEqual(user_message.attachments.count(), 5)
+        mocked_questions.assert_called_once()
+        for attachment in user_message.attachments.all():
+            self.addCleanup(attachment.file.delete, save=False)
+
+    def test_start_chat_rejects_six_files_at_once(self):
+        files = [
+            SimpleUploadedFile(
+                f'lesson-{index}.txt',
+                f'Lesson content {index}.'.encode(),
+                content_type='text/plain',
+            )
+            for index in range(6)
+        ]
+
+        response = self.client.post(
+            reverse('chat:start'),
+            {'files': files},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no more than 5 files', response.json()['error'])
+        self.assertEqual(Conversation.objects.count(), 0)
+        self.assertEqual(MessageAttachment.objects.count(), 0)
+
     @patch('apps.chat.services.generate_quiz')
     def test_attachment_questions_extract_docx_text(self, mocked_generate):
         mocked_generate.return_value = {
@@ -511,7 +563,7 @@ class ChatWorkflowTests(TestCase):
         self.assertEqual(public_response.status_code, 200)
         self.assertContains(public_response, 'Shared study chat')
         self.assertContains(public_response, 'Here is a practice question.')
-        self.assertContains(public_response, 'Choice A')
+        self.assertContains(public_response, 'CHOICE A')
         self.assertNotContains(public_response, 'private-answer-key')
         self.assertNotContains(public_response, 'private explanation')
         self.assertNotContains(public_response, 'private-attachment.txt')
@@ -675,10 +727,10 @@ class ChatWorkflowTests(TestCase):
         self.assertContains(result_page, '1 / 2')
         self.assertContains(result_page, '50.00%')
         self.assertContains(result_page, 'Your answer:')
-        self.assertContains(result_page, 'Nucleus')
+        self.assertContains(result_page, 'NUCLEUS')
         self.assertContains(result_page, 'Incorrect')
         self.assertContains(result_page, 'Answer key:')
-        self.assertContains(result_page, 'Mitochondria')
+        self.assertContains(result_page, 'MITOCHONDRIA')
         self.assertContains(result_page, 'Print result')
         self.assertContains(result_page, 'window.print()')
 
@@ -1177,6 +1229,13 @@ class ChatServiceTests(TestCase):
         )
         self.assertTrue(all(
             len(question['options']) == 4
+            and all(
+                option == option.upper()
+                for option in question['options']
+            )
+            and len({
+                option.casefold() for option in question['options']
+            }) == 4
             and question['correct_answer'] in question['options']
             for question in questions
         ))

@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.chat.models import Conversation, Message, MessageAttachment
-from apps.notes.models import Note, NoteRating, NoteReport, Question, QuizAttempt, QuizSet, Subject
+from apps.notes.models import Note, Question, QuizAttempt, QuizSet
 from apps.notes.services import build_exam_source, generate_quiz
 from apps.users.models import Profile
 from apps.users.roles import can_admin, can_moderate, get_user_role
@@ -26,7 +26,6 @@ def _set_role(user, role):
 class NotesModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='student1', password='pass12345')
-        self.other = User.objects.create_user(username='student2', password='pass12345')
         self.note = Note.objects.create(
             title='Photosynthesis Notes',
             subject='Biology',
@@ -42,25 +41,6 @@ class NotesModelTests(TestCase):
             ),
             uploaded_by=self.user,
         )
-
-    def test_avg_rating(self):
-        self.assertEqual(self.note.avg_rating, 0)
-        NoteRating.objects.create(note=self.note, user=self.user, score=5)
-        NoteRating.objects.create(note=self.note, user=self.other, score=3)
-        self.assertEqual(self.note.avg_rating, 4.0)
-        self.assertEqual(self.note.ratings_count, 2)
-
-    def test_rating_unique_per_user(self):
-        NoteRating.objects.update_or_create(
-            note=self.note, user=self.user, defaults={'score': 4}
-        )
-        NoteRating.objects.update_or_create(
-            note=self.note, user=self.user, defaults={'score': 2}
-        )
-        self.assertEqual(
-            NoteRating.objects.filter(note=self.note, user=self.user).count(), 1
-        )
-        self.assertEqual(self.note.avg_rating, 2.0)
 
     def test_local_quiz_fallback(self):
         result = generate_quiz(self.note.content, num_questions=4, question_type='mixed')
@@ -136,11 +116,60 @@ class NotesModelTests(TestCase):
         )
         self.assertNotContains(response, 'private-study-guide.txt')
 
-    def test_rate_view(self):
-        self.client.force_login(self.other)
-        resp = self.client.post(f'/notes/{self.note.pk}/rate/', {'score': 5})
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.note.avg_rating, 5.0)
+    def test_progress_page_syncs_uploaded_chat_files(self):
+        conversation = Conversation.objects.create(
+            user=self.user, title='My uploaded file'
+        )
+        message = Message.objects.create(
+            conversation=conversation,
+            role=Message.ROLE_USER,
+            content='Use this file.',
+        )
+        attachment = MessageAttachment.objects.create(
+            message=message,
+            original_name='progress-study-guide.txt',
+            file=SimpleUploadedFile('progress-study-guide.txt', b'My study guide.'),
+        )
+        self.addCleanup(attachment.file.delete, save=False)
+
+        other = get_user_model().objects.create_user(
+            username='other-file-owner', password='pass12345'
+        )
+        other_conversation = Conversation.objects.create(
+            user=other, title='Someone elses file'
+        )
+        other_message = Message.objects.create(
+            conversation=other_conversation,
+            role=Message.ROLE_USER,
+            content='Private upload.',
+        )
+        other_attachment = MessageAttachment.objects.create(
+            message=other_message,
+            original_name='private-progress-guide.txt',
+            file=SimpleUploadedFile(
+                'private-progress-guide.txt', b'Someone elses study guide.'
+            ),
+        )
+        self.addCleanup(other_attachment.file.delete, save=False)
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('notes:my_progress'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['notes_uploaded'], 1)
+        self.assertContains(response, 'Uploaded Notes')
+        self.assertNotContains(response, 'Ratings given')
+        self.assertNotIn('ratings_given', response.context)
+        self.assertContains(response, 'progress-study-guide.txt')
+        self.assertContains(response, 'My uploaded file')
+        self.assertContains(
+            response, reverse('chat:view_attachment', args=[attachment.pk])
+        )
+        self.assertContains(
+            response, reverse('chat:download_attachment', args=[attachment.pk])
+        )
+        self.assertNotContains(response, 'private-progress-guide.txt')
+        self.assertNotContains(response, 'Someone elses file')
 
 
 class RolesTests(TestCase):
@@ -196,16 +225,6 @@ class RolesTests(TestCase):
         self.client.force_login(self.student)
         self.assertEqual(self.client.get('/notes/analytics/').status_code, 302)
 
-    def test_subject_manage_permissions(self):
-        self.client.force_login(self.student)
-        resp = self.client.post('/notes/subjects/save/', {'name': 'Physics'})
-        self.assertEqual(resp.status_code, 302)  # redirected to dashboard (no permission)
-        self.assertFalse(Subject.objects.filter(name='Physics').exists())
-        self.client.force_login(self.instructor)
-        resp = self.client.post('/notes/subjects/save/', {'name': 'Physics'})
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(Subject.objects.filter(name='Physics').exists())
-
     def test_user_management_requires_admin(self):
         self.client.force_login(self.student)
         self.assertEqual(self.client.get('/users/').status_code, 302)
@@ -213,42 +232,6 @@ class RolesTests(TestCase):
         self.assertEqual(self.client.get('/users/').status_code, 302)
         self.client.force_login(self.admin)
         self.assertEqual(self.client.get('/users/').status_code, 200)
-
-
-class ReportsModerationTests(TestCase):
-    def setUp(self):
-        self.student = User.objects.create_user(username='s1', password='pass12345')
-        self.reporter = User.objects.create_user(username='s2', password='pass12345')
-        self.instructor = User.objects.create_user(username='ins1', password='pass12345')
-        _set_role(self.instructor, Profile.ROLE_INSTRUCTOR)
-        self.note = Note.objects.create(
-            title='Flag me', subject='Bio', instructor='Prof', topic='T',
-            school_year='2024-2025', uploaded_by=self.student, status=Note.STATUS_APPROVED,
-        )
-
-    def test_report_and_remove(self):
-        self.client.force_login(self.reporter)
-        resp = self.client.post(f'/notes/{self.note.pk}/report/', {'reason': 'incorrect', 'details': 'wrong'})
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(NoteReport.objects.filter(note=self.note).count(), 1)
-        self.client.force_login(self.instructor)
-        report = NoteReport.objects.get(note=self.note)
-        resp = self.client.post(f'/notes/reports/{report.pk}/review/', {'action': 'remove'})
-        self.assertEqual(resp.status_code, 302)
-        self.note.refresh_from_db()
-        self.assertEqual(self.note.status, Note.STATUS_REJECTED)
-        # Rejected note hidden from other students.
-        self.client.force_login(self.reporter)
-        resp = self.client.get(f'/notes/{self.note.pk}/')
-        self.assertEqual(resp.status_code, 302)
-
-    def test_report_dismiss(self):
-        NoteReport.objects.create(note=self.note, reporter=self.reporter, reason='spam')
-        self.client.force_login(self.instructor)
-        report = NoteReport.objects.get(note=self.note)
-        self.client.post(f'/notes/reports/{report.pk}/review/', {'action': 'dismiss'})
-        report.refresh_from_db()
-        self.assertEqual(report.status, NoteReport.STATUS_DISMISSED)
 
 
 class QuizTakeTests(TestCase):
@@ -312,6 +295,119 @@ class AIProviderTests(TestCase):
         result = generate_quiz('Some long enough source text. ' * 10, provider='auto')
         # No keys in test env -> local.
         self.assertEqual(result['provider'], 'local')
+
+    def test_local_mcq_choices_are_uppercase_and_unique(self):
+        from apps.notes.services import generate_quiz
+        source = (
+            'Photosynthesis converts light energy into chemical energy. '
+            'Chlorophyll absorbs sunlight in the chloroplasts. '
+            'Carbon dioxide and water produce glucose and oxygen. '
+            'Cellular respiration produces ATP in mitochondria. '
+            'Enzymes speed up chemical reactions in cells. '
+            'DNA stores genetic information in the nucleus. '
+            'Proteins are built from amino acids. '
+            'Mitosis produces two identical cells. '
+            'Osmosis moves water across membranes. '
+            'Diffusion spreads particles from high to low concentration.'
+        )
+        result = generate_quiz(
+            source, num_questions=10, question_type='mcq', provider='local'
+        )
+        self.assertEqual(len(result['questions']), 10)
+        option_sets = set()
+        for question in result['questions']:
+            options = question['options']
+            self.assertEqual(len(options), 4)
+            self.assertTrue(all(option == option.upper() for option in options))
+            self.assertEqual(len({option.casefold() for option in options}), 4)
+            self.assertIn(question['correct_answer'], options)
+            option_sets.add(tuple(sorted(options)))
+        # Do not repeat the exact same choice list across the quiz.
+        self.assertEqual(len(option_sets), 10)
+
+    def test_local_true_false_choices_are_uppercase(self):
+        from apps.notes.services import generate_quiz
+        result = generate_quiz(
+            'Active recall and spaced repetition improve long-term retention. ' * 8,
+            num_questions=5,
+            question_type='true_false',
+            provider='local',
+        )
+        self.assertTrue(result['questions'])
+        for question in result['questions']:
+            self.assertEqual(question['options'], ['TRUE', 'FALSE'])
+            self.assertIn(question['correct_answer'], ('TRUE', 'FALSE'))
+
+    def test_provider_choices_are_uppercased_and_deduplicated(self):
+        import json
+        from unittest.mock import patch
+        from apps.notes import services as svc
+
+        fake_questions = [
+            {
+                'question_type': 'mcq',
+                'question_text': 'Q1?',
+                'options': ['alpha', 'Alpha', 'beta', 'gamma', 'delta'],
+                'correct_answer': 'alpha',
+                'explanation': '',
+            },
+            {
+                'question_type': 'mcq',
+                'question_text': 'Q2?',
+                'options': ['ALL OF THE ABOVE', 'NONE OF THE ABOVE', 'beta', 'gamma'],
+                'correct_answer': 'beta',
+                'explanation': '',
+            },
+            {
+                'question_type': 'true_false',
+                'question_text': 'Q3?',
+                'options': ['True', 'False'],
+                'correct_answer': 'false',
+                'explanation': '',
+            },
+        ]
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    'choices': [
+                        {'message': {'content': json.dumps(fake_questions)}}
+                    ]
+                }).encode()
+
+        with patch.object(
+            svc, 'get_openrouter_config', return_value=('test-key', 'test-model')
+        ), patch('urllib.request.urlopen', return_value=FakeResp()):
+            result = svc.generate_quiz(
+                'Some long enough source text. ' * 10,
+                num_questions=3,
+                provider='openrouter',
+            )
+
+        first, second, third = result['questions']
+        self.assertEqual(first['options'], ['ALPHA', 'BETA', 'GAMMA', 'DELTA'])
+        self.assertEqual(first['correct_answer'], 'ALPHA')
+        self.assertTrue(
+            all(option == option.upper() for option in second['options'])
+        )
+        self.assertEqual(
+            len({option.casefold() for option in second['options']}),
+            len(second['options']),
+        )
+        self.assertFalse(
+            'ALL OF THE ABOVE' in second['options']
+            and 'NONE OF THE ABOVE' in second['options']
+        )
+        self.assertIn(second['correct_answer'], second['options'])
+        self.assertEqual(second['correct_answer'], 'BETA')
+        self.assertEqual(third['options'], ['TRUE', 'FALSE'])
+        self.assertEqual(third['correct_answer'], 'FALSE')
 
     def test_explicit_missing_key_falls_back_local(self):
         from apps.notes.services import generate_quiz
@@ -403,7 +499,7 @@ class ExamAutomationTests(TestCase):
         resp = self.client.post('/notes/exam/builder/', {
             'subject': 'Biology', 'school_year': '', 'topic': '',
             'max_notes': 3, 'num_questions': 6, 'question_type': 'mcq',
-            'provider': 'local', 'order': 'top',
+            'provider': 'local', 'order': 'newest',
         })
         self.assertEqual(resp.status_code, 302)
         exam = QuizSet.objects.filter(is_exam=True).latest('id')
@@ -487,7 +583,6 @@ class ExamAutomationTests(TestCase):
 class SeedExamplesTests(TestCase):
     def test_seed_creates_examples_and_is_idempotent(self):
         call_command('seed_examples')
-        self.assertGreaterEqual(Subject.objects.count(), 4)
         self.assertGreaterEqual(Note.objects.filter(status=Note.STATUS_APPROVED).count(), 10)
         self.assertGreaterEqual(QuizSet.objects.filter(is_exam=False).count(), 10)
         self.assertGreaterEqual(QuizSet.objects.filter(is_exam=True).count(), 2)
@@ -499,7 +594,7 @@ class SeedExamplesTests(TestCase):
 
 
 class RemovedNoteVisibilityTests(TestCase):
-    """Rejected/private notes must not leak via quiz/rate/report endpoints."""
+    """Rejected/private notes must not leak via quiz endpoints."""
 
     def setUp(self):
         self.owner = User.objects.create_user(username='visowner', password='pass12345')
@@ -526,16 +621,7 @@ class RemovedNoteVisibilityTests(TestCase):
         self.assertEqual(QuizSet.objects.filter(note=self.rejected).count(), 1)  # no new quiz
         self.assertEqual(self.client.get(f'/notes/quiz/{self.quiz.pk}/').status_code, 302)
         self.assertEqual(self.client.get(f'/notes/quiz/{self.quiz.pk}/take/').status_code, 302)
-        self.assertEqual(
-            self.client.post(f'/notes/{self.rejected.pk}/rate/', {'score': 5}).status_code, 302)
 
     def test_moderator_can_still_review(self):
         self.client.force_login(self.instructor)
         self.assertEqual(self.client.get(f'/notes/quiz/{self.quiz.pk}/').status_code, 200)
-
-    def test_ensure_subject_case_variants_no_crash(self):
-        from apps.notes.views import _ensure_subject
-        Subject.objects.create(name='UniqSub')
-        Subject.objects.create(name='uniqsub')
-        _ensure_subject('UNIQSUB', self.student)  # must not raise
-        self.assertTrue(Subject.objects.filter(name__iexact='uniqsub').exists())

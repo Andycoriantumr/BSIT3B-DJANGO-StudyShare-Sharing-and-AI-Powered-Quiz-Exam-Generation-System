@@ -72,12 +72,6 @@
             <span class="nav-link-title">Review Materials</span>
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.resolver_match.url_name == 'subject_list' %}active{% endif %}" href="{% url 'notes:subject_list' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-tags"></i></span>
-            <span class="nav-link-title">Manage Subjects</span>
-          </a>
-        </li>
         {% endif %}
 
         {% if can_admin %}
@@ -94,12 +88,6 @@
           <a class="nav-link {% if request.resolver_match.url_name == 'system_analytics' %}active{% endif %}" href="{% url 'notes:system_analytics' %}">
             <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-chart-bar"></i></span>
             <span class="nav-link-title">Analytics</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.resolver_match.app_name == 'info' %}active{% endif %}" href="{% url 'info:info_list' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-address-card"></i></span>
-            <span class="nav-link-title">Info</span>
           </a>
         </li>
         {% endif %}

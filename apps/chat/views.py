@@ -9,7 +9,6 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.chat.services import _read_chat_file_text
-from apps.notes.models import Subject
 from apps.users.guests import display_identity
 
 from .models import ChatQuizAttempt, Conversation, Message, MessageAttachment
@@ -286,7 +285,6 @@ def conversation_detail(request, pk):
         'conversation': conversation,
         'chat_messages': chat_messages,
         'sidebar_conversations': recent_conversations(request.user),
-        'sidebar_subjects': Subject.objects.filter(is_active=True).order_by('name')[:3],
         'active_conversation': conversation,
         'display_name': display_name,
         'initials': initials,

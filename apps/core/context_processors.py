@@ -33,13 +33,12 @@ def _active_ai_provider():
 
 
 def studyshare_shell(request):
-    """Supply sidebar identity, subjects, recent chats, and AI status."""
+    """Supply sidebar identity, recent chats, and AI status."""
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         return {}
 
     from apps.chat.selectors import recent_conversations
-    from apps.notes.models import Subject
     from apps.users.guests import display_identity, is_guest
 
     display_name, initials = display_identity(user)
@@ -49,7 +48,6 @@ def studyshare_shell(request):
         'display_name': display_name,
         'initials': initials,
         'is_guest': is_guest(user),
-        'sidebar_subjects': Subject.objects.filter(is_active=True).order_by('name')[:3],
         'sidebar_conversations': recent_conversations(user),
         'ai_provider': ai_provider,
         'ai_provider_label': PROVIDER_LABELS[ai_provider],

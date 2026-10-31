@@ -1,19 +1,16 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
-from django.db import IntegrityError
 from django.db.models import Avg, Count, Q
-from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.chat.models import ChatQuizAttempt, MessageAttachment
-from apps.users.models import Profile
 from apps.users.roles import can_admin, can_moderate
 
-from .forms import NoteForm, ReportForm, SubjectForm
-from .models import Note, NoteRating, NoteReport, Question, QuizAttempt, QuizSet, Subject
+from .forms import NoteForm
+from .models import Note, Question, QuizAttempt, QuizSet
 from .services import build_exam_source, generate_quiz, get_note_source_text
 
 
@@ -41,9 +38,7 @@ def _create_quiz_set(note, user, title, num, qtype, provider_name, questions,
 
 
 def _visible_notes_for(user):
-    qs = Note.objects.select_related('uploaded_by').annotate(
-        avg_score=Avg('ratings__score'), num_ratings=Count('ratings')
-    )
+    qs = Note.objects.select_related('uploaded_by')
     if not can_moderate(user):
         qs = qs.filter(
             Q(status=Note.STATUS_APPROVED, is_public=True) | Q(uploaded_by=user)
@@ -51,7 +46,7 @@ def _visible_notes_for(user):
     return qs
 
 
-def _pick_notes_for_exam(user, subject='', school_year='', topic='', limit=4, order='top'):
+def _pick_notes_for_exam(user, subject='', school_year='', topic='', limit=4, order='newest'):
     qs = _visible_notes_for(user).filter(status=Note.STATUS_APPROVED)
     if subject:
         qs = qs.filter(subject__iexact=subject)
@@ -59,23 +54,11 @@ def _pick_notes_for_exam(user, subject='', school_year='', topic='', limit=4, or
         qs = qs.filter(school_year__iexact=school_year)
     if topic:
         qs = qs.filter(topic__icontains=topic)
-    if order == 'newest':
-        qs = qs.order_by('-created_at')
+    if order == 'oldest':
+        qs = qs.order_by('created_at')
     else:
-        qs = qs.order_by('-avg_score', '-num_ratings', '-created_at')
+        qs = qs.order_by('-created_at')
     return list(qs[:max(1, min(limit, 8))])
-
-
-def _ensure_subject(name, user):
-    name = (name or '').strip()
-    if not name:
-        return
-    try:
-        if Subject.objects.filter(name__iexact=name).exists():
-            return
-        Subject.objects.create(name=name, created_by=user)
-    except IntegrityError:
-        pass
 
 
 def _can_view_note(user, note):
@@ -100,7 +83,7 @@ def note_list(request):
 @login_required(login_url='login')
 def note_detail(request, pk):
     note = get_object_or_404(
-        Note.objects.select_related('uploaded_by').annotate(avg_score=Avg('ratings__score')),
+        Note.objects.select_related('uploaded_by'),
         pk=pk,
     )
     if not _can_view_note(request.user, note):
@@ -109,19 +92,14 @@ def note_detail(request, pk):
         else:
             messages.error(request, 'This note is private.')
         return redirect('notes:note_list')
-    ratings = note.ratings.select_related('user')[:20]
     quiz_sets = note.quiz_sets.select_related('created_by').prefetch_related('questions')
     my_attempts = QuizAttempt.objects.filter(
         quiz__in=quiz_sets, taker=request.user
     ).select_related('quiz').order_by('-submitted_at')[:10]
-    report_form = ReportForm()
     return render(request, 'notes/detail.html', {
         'note': note,
-        'ratings': ratings,
         'quiz_sets': quiz_sets,
-        'my_rating': note.user_rating(request.user),
         'my_attempts': my_attempts,
-        'report_form': report_form,
     })
 
 
@@ -142,7 +120,6 @@ def note_create(request):
             else:
                 note.status = Note.STATUS_PENDING
             note.save()
-            _ensure_subject(note.subject, request.user)
             if note.status == Note.STATUS_PENDING:
                 messages.success(request, f'Note "{note.title}" uploaded and pending review.')
             else:
@@ -164,12 +141,16 @@ def note_update(request, pk):
         form = NoteForm(request.POST, request.FILES, instance=note)
         if form.is_valid():
             form.save()
-            _ensure_subject(note.subject, request.user)
             messages.success(request, 'Note updated.')
             return redirect('notes:note_detail', pk=pk)
     else:
         form = NoteForm(instance=note)
-    subjects = Subject.objects.filter(is_active=True).order_by('name')
+    subjects = (
+        Note.objects.exclude(subject='')
+        .values_list('subject', flat=True)
+        .distinct()
+        .order_by('subject')
+    )
     return render(request, 'notes/form.html', {'form': form, 'mode': 'edit', 'note': note, 'subjects': subjects})
 
 
@@ -186,176 +167,18 @@ def note_delete(request, pk):
     return redirect('notes:note_list')
 
 
-@login_required(login_url='login')
-@require_POST
-def note_rate(request, pk):
-    note = get_object_or_404(Note, pk=pk)
-    if not _can_view_note(request.user, note):
-        messages.error(request, 'You cannot rate this note.')
-        return redirect('notes:note_list')
-    try:
-        score = int(request.POST.get('score', 0))
-    except (TypeError, ValueError):
-        score = 0
-    if score < 1 or score > 5:
-        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-            return JsonResponse({'error': 'Score must be 1-5.'}, status=400)
-        messages.error(request, 'Score must be between 1 and 5.')
-        return redirect('notes:note_detail', pk=pk)
-    comment = request.POST.get('comment', '').strip()[:1000]
-    NoteRating.objects.update_or_create(
-        note=note, user=request.user, defaults={'score': score, 'comment': comment}
-    )
-    note.refresh_from_db()
-    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        return JsonResponse({
-            'status': 'success', 'avg_rating': note.avg_rating,
-            'ratings_count': note.ratings_count,
-        })
-    messages.success(request, 'Thanks for rating this note!')
-    return redirect('notes:note_detail', pk=pk)
-
-
 # ---------------------------------------------------------------------------
-# Subjects (Instructor/Admin manage, everyone reads active list)
+# Moderation queue
 # ---------------------------------------------------------------------------
-
-@login_required(login_url='login')
-def subject_list(request):
-    # Count notes by matching name since Note.subject is a CharField.
-    subjects = Subject.objects.all().order_by('name')
-    counts = {
-        n['subject']: n['c']
-        for n in Note.objects.values('subject').annotate(c=Count('id')).values('subject', 'c')
-    }
-    q = request.GET.get('q', '').strip()
-    if q:
-        subjects = subjects.filter(Q(name__icontains=q) | Q(code__icontains=q))
-    paginator = Paginator(subjects, 12)
-    page = paginator.get_page(request.GET.get('page', 1))
-    for s in page.object_list:
-        s.computed_notes = counts.get(s.name, 0)
-    return render(request, 'notes/subjects.html', {
-        'subjects': page, 'query': q, 'form': SubjectForm(),
-    })
-
-
-@login_required(login_url='login')
-@user_passes_test(can_moderate, login_url='dashboard')
-@require_POST
-def subject_save(request):
-    sid = request.POST.get('id', '').strip()
-    if sid:
-        subject = get_object_or_404(Subject, pk=sid)
-        form = SubjectForm(request.POST, instance=subject)
-    else:
-        form = SubjectForm(request.POST)
-    if form.is_valid():
-        obj = form.save(commit=False)
-        if not obj.pk:
-            obj.created_by = request.user
-        obj.save()
-        messages.success(request, f'Subject "{obj.name}" saved.')
-    else:
-        messages.error(request, 'Could not save subject. Name is required and must be unique.')
-    return redirect('notes:subject_list')
-
-
-@login_required(login_url='login')
-@user_passes_test(can_moderate, login_url='dashboard')
-@require_POST
-def subject_delete(request, pk):
-    subject = get_object_or_404(Subject, pk=pk)
-    name = subject.name
-    subject.delete()
-    messages.success(request, f'Subject "{name}" deleted.')
-    return redirect('notes:subject_list')
-
-
-# ---------------------------------------------------------------------------
-# Reports + moderation queue
-# ---------------------------------------------------------------------------
-
-@login_required(login_url='login')
-@require_POST
-def report_create(request, pk):
-    note = get_object_or_404(Note, pk=pk)
-    if not _can_view_note(request.user, note):
-        messages.error(request, 'You cannot report this note.')
-        return redirect('notes:note_list')
-    form = ReportForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, 'Please choose a reason for the report.')
-        return redirect('notes:note_detail', pk=pk)
-    existing = NoteReport.objects.filter(
-        note=note, reporter=request.user, status=NoteReport.STATUS_PENDING
-    ).first()
-    if existing:
-        existing.reason = form.cleaned_data['reason']
-        existing.details = form.cleaned_data['details']
-        existing.save()
-        messages.success(request, 'Your report was updated.')
-    else:
-        NoteReport.objects.create(
-            note=note, reporter=request.user,
-            reason=form.cleaned_data['reason'], details=form.cleaned_data['details'],
-        )
-        messages.success(request, 'Thanks — moderators will review this note.')
-    return redirect('notes:note_detail', pk=pk)
-
-
-@login_required(login_url='login')
-def report_list(request):
-    if can_moderate(request.user):
-        qs = NoteReport.objects.select_related('note', 'reporter', 'reviewed_by').order_by('-created_at')
-    else:
-        qs = NoteReport.objects.filter(reporter=request.user).select_related('note').order_by('-created_at')
-    status = request.GET.get('status', '').strip()
-    if status in ('pending', 'dismissed', 'action_taken'):
-        qs = qs.filter(status=status)
-    paginator = Paginator(qs, 15)
-    reports = paginator.get_page(request.GET.get('page', 1))
-    return render(request, 'notes/reports.html', {'reports': reports, 'status': status})
-
-
-@login_required(login_url='login')
-@user_passes_test(can_moderate, login_url='dashboard')
-@require_POST
-def report_review(request, pk):
-    report = get_object_or_404(NoteReport, pk=pk)
-    action = request.POST.get('action', 'dismiss')
-    report.reviewed_by = request.user
-    report.reviewed_at = timezone.now()
-    if action == 'remove':
-        report.status = NoteReport.STATUS_ACTION
-        note = report.note
-        note.status = Note.STATUS_REJECTED
-        note.is_public = False
-        note.save()
-        NoteReport.objects.filter(note=note, status=NoteReport.STATUS_PENDING).exclude(pk=report.pk).update(
-            status=NoteReport.STATUS_ACTION, reviewed_by=request.user, reviewed_at=timezone.now()
-        )
-        messages.success(request, f'Note "{note.title}" removed and reports closed.')
-    else:
-        report.status = NoteReport.STATUS_DISMISSED
-        messages.success(request, 'Report dismissed.')
-    report.save()
-    return redirect('notes:report_list')
-
 
 @login_required(login_url='login')
 @user_passes_test(can_moderate, login_url='dashboard')
 def moderation_queue(request):
-    pending_notes = Note.objects.filter(status=Note.STATUS_PENDING).select_related('uploaded_by').annotate(
-        pending_reports=Count('reports', filter=Q(reports__status=NoteReport.STATUS_PENDING))
-    ).order_by('-created_at')[:50]
-    flagged = Note.objects.filter(
-        reports__status=NoteReport.STATUS_PENDING
-    ).annotate(pending_reports=Count('reports', filter=Q(reports__status=NoteReport.STATUS_PENDING))).distinct().order_by('-created_at')[:50]
-    pending_count = NoteReport.objects.filter(status=NoteReport.STATUS_PENDING).count()
+    pending_qs = Note.objects.filter(status=Note.STATUS_PENDING)
+    pending_count = pending_qs.count()
+    pending_notes = pending_qs.select_related('uploaded_by').order_by('-created_at')[:50]
     return render(request, 'notes/moderation.html', {
         'pending_notes': pending_notes,
-        'flagged': flagged,
         'pending_count': pending_count,
     })
 
@@ -516,16 +339,22 @@ def my_progress(request):
     total_taken = chat_attempt_stats['count']
     avg = chat_attempt_stats['avg'] or 0
     best = chat_attempts.order_by('-percentage').first()
-    notes_uploaded = Note.objects.filter(uploaded_by=request.user).count()
-    ratings_given = NoteRating.objects.filter(user=request.user).count()
+    uploaded_files = Paginator(
+        MessageAttachment.objects.filter(
+            message__conversation__user=request.user
+        ).select_related('message__conversation').order_by('-created_at'),
+        10,
+    ).get_page(request.GET.get('upload_page', 1))
+    notes_uploaded = uploaded_files.paginator.count
     quizzes_created = QuizSet.objects.filter(created_by=request.user).count()
     return render(request, 'notes/progress.html', {
         'chat_attempts': Paginator(chat_attempts, 15).get_page(
             request.GET.get('chat_page', 1)
         ),
+        'uploaded_files': uploaded_files,
         'total_taken': total_taken, 'avg_score': round(avg, 2),
         'best': best, 'notes_uploaded': notes_uploaded,
-        'ratings_given': ratings_given, 'quizzes_created': quizzes_created,
+        'quizzes_created': quizzes_created,
     })
 
 
@@ -551,19 +380,17 @@ def system_analytics(request):
     notes_by_subject = list(
         Note.objects.values('subject').annotate(c=Count('id')).order_by('-c')[:8]
     )
-    top_rated = list(
-        Note.objects.filter(status=Note.STATUS_APPROVED).annotate(avg_score=Avg('ratings__score')).order_by('-avg_score')[:5]
+    subjects_total = (
+        Note.objects.exclude(subject='')
+        .values('subject')
+        .distinct()
+        .count()
     )
-    ratings_total = NoteRating.objects.count()
-    ratings_avg = NoteRating.objects.aggregate(a=Avg('score'))['a'] or 0
     quizzes_total = QuizSet.objects.count()
     attempts_total = QuizAttempt.objects.count()
     attempts_avg = QuizAttempt.objects.aggregate(a=Avg('percentage'))['a'] or 0
-    reports_total = NoteReport.objects.count()
-    reports_pending = NoteReport.objects.filter(status=NoteReport.STATUS_PENDING).count()
     recent_notes = Note.objects.select_related('uploaded_by').order_by('-created_at')[:8]
     recent_attempts = QuizAttempt.objects.select_related('quiz', 'taker').order_by('-submitted_at')[:8]
-    recent_reports = NoteReport.objects.select_related('note', 'reporter').order_by('-created_at')[:8]
     # Charts: notes per subject + attempts per day (last 14 days).
     from django.db.models.functions import TruncDate
     from datetime import timedelta
@@ -585,13 +412,10 @@ def system_analytics(request):
     return render(request, 'notes/analytics.html', {
         'users_total': users_total, 'by_role': by_role,
         'notes_total': notes_total, 'notes_by_status': notes_by_status,
-        'notes_by_subject': notes_by_subject, 'top_rated': top_rated,
-        'ratings_total': ratings_total, 'ratings_avg': round(ratings_avg, 2),
+        'notes_by_subject': notes_by_subject, 'subjects_total': subjects_total,
         'quizzes_total': quizzes_total, 'attempts_total': attempts_total,
         'attempts_avg': round(attempts_avg, 2),
-        'reports_total': reports_total, 'reports_pending': reports_pending,
         'recent_notes': recent_notes, 'recent_attempts': recent_attempts,
-        'recent_reports': recent_reports,
         'chart_subjects_json': chart_subjects,
         'chart_attempts_json': chart_attempts,
     })
@@ -622,16 +446,21 @@ def _parse_exam_options(request):
     except (TypeError, ValueError):
         max_notes = 4
     max_notes = max(1, min(max_notes, 8))
-    order = request.POST.get('order', 'top')
-    if order not in ('top', 'newest'):
-        order = 'top'
+    order = request.POST.get('order', 'newest')
+    if order not in ('newest', 'oldest'):
+        order = 'newest'
     return num, qtype, provider, max_notes, order
 
 
 @login_required(login_url='login')
 def exam_builder(request):
     """One-page exam automation: pick filters -> auto-pick notes -> one exam."""
-    subjects = Subject.objects.filter(is_active=True).order_by('name')
+    subjects = (
+        Note.objects.exclude(subject='')
+        .values_list('subject', flat=True)
+        .distinct()
+        .order_by('subject')
+    )
     school_years = Note.objects.values_list('school_year', flat=True).distinct().order_by('school_year')[:50]
     recent_exams = QuizSet.objects.filter(is_exam=True).select_related(
         'note', 'created_by').prefetch_related('questions').order_by('-created_at')[:10]

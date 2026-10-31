@@ -450,6 +450,11 @@
       if (!preview) {
         return;
       }
+      var maxFiles = parseInt(control.getAttribute("data-ss-max-files") || "5", 10);
+      if (isNaN(maxFiles) || maxFiles < 1) {
+        maxFiles = 5;
+      }
+      var previousSelections = new WeakMap();
 
       function selectedFiles() {
         var files = [];
@@ -464,10 +469,49 @@
         return files;
       }
 
+      function countFilesInOtherInputs(input) {
+        var count = 0;
+        control.querySelectorAll("[data-ss-file-input]").forEach(function (other) {
+          if (other !== input) {
+            count += (other.files || []).length;
+          }
+        });
+        return count;
+      }
+
+      function mergeNewSelection(input) {
+        if (!window.DataTransfer || !input.files) {
+          return;
+        }
+        var previous = previousSelections.get(input) || [];
+        var picked = Array.prototype.slice.call(input.files);
+        var available = Math.max(0, maxFiles - countFilesInOtherInputs(input));
+        var combined = [];
+        var seen = {};
+        previous.concat(picked).forEach(function (file) {
+          var key = file.name + ":" + file.size + ":" + file.lastModified;
+          if (!seen[key]) {
+            seen[key] = true;
+            combined.push(file);
+          }
+        });
+        if (combined.length > available) {
+          showToast("You can attach up to " + maxFiles + " files at once.");
+          combined = combined.slice(0, available);
+        }
+        var transfer = new DataTransfer();
+        combined.forEach(function (file) {
+          transfer.items.add(file);
+        });
+        input.files = transfer.files;
+        previousSelections.set(input, combined);
+      }
+
       function renderPreview() {
         var files = selectedFiles();
         preview.replaceChildren();
         preview.hidden = files.length === 0;
+        form.classList.toggle("ss-has-attachments", files.length > 0);
         var countControl = form.querySelector("[data-ss-question-count]");
         if (countControl) {
           countControl.hidden = files.length === 0;
@@ -497,6 +541,10 @@
             } else {
               attachment.input.value = "";
             }
+            previousSelections.set(
+              attachment.input,
+              Array.prototype.slice.call(attachment.input.files || [])
+            );
             renderPreview();
           });
           chip.appendChild(remove);
@@ -515,7 +563,16 @@
       }
 
       control.querySelectorAll("[data-ss-file-input]").forEach(function (input) {
-        input.addEventListener("change", renderPreview);
+        input.addEventListener("click", function () {
+          previousSelections.set(
+            input,
+            Array.prototype.slice.call(input.files || [])
+          );
+        });
+        input.addEventListener("change", function () {
+          mergeNewSelection(input);
+          renderPreview();
+        });
       });
       control.querySelectorAll("label[for]").forEach(function (label) {
         label.addEventListener("keydown", function (event) {

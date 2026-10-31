@@ -1,4 +1,4 @@
-"""Seed example subjects, notes, quizzes, and exams for demos.
+"""Seed example notes, quizzes, and exams for demos.
 
 Idempotent: safe to run multiple times (uses get_or_create, skips notes that
 already have quizzes).
@@ -13,16 +13,9 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.notes.models import Note, NoteRating, QuizSet, Subject
+from apps.notes.models import Note, QuizSet
 from apps.notes.services import build_exam_source, generate_quiz
 from apps.notes.views import _create_quiz_set
-
-EXAMPLE_SUBJECTS = [
-    {'name': 'Biology', 'code': 'BIO101', 'description': 'Life science fundamentals.'},
-    {'name': 'Mathematics', 'code': 'MATH101', 'description': 'Algebra and probability basics.'},
-    {'name': 'Philippine History', 'code': 'HIST101', 'description': 'Key eras in Philippine history.'},
-    {'name': 'IT Capstone', 'code': 'IT401', 'description': 'Software projects and databases.'},
-]
 
 EXAMPLE_NOTES = [
     {
@@ -169,14 +162,14 @@ EXAMPLE_NOTES = [
 
 
 class Command(BaseCommand):
-    help = 'Seed example subjects, notes, quizzes, and exams (idempotent).'
+    help = 'Seed example notes, quizzes, and exams (idempotent).'
 
     def add_arguments(self, parser):
         parser.add_argument('--user', default='', help='Owner username for seeded items.')
         parser.add_argument('--no-quizzes', action='store_true', help='Skip per-note quiz generation.')
         parser.add_argument('--no-exams', action='store_true', help='Skip automated exam generation.')
         parser.add_argument('--reset', action='store_true',
-                            help='Delete existing StudyShare demo data (notes, subjects, quizzes) first.')
+                            help='Delete existing StudyShare demo data (notes and quizzes) first.')
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -194,16 +187,7 @@ class Command(BaseCommand):
         if options['reset']:
             QuizSet.objects.all().delete()
             Note.objects.all().delete()
-            Subject.objects.all().delete()
-            self.stdout.write('Reset: cleared notes, subjects, and quizzes.')
-
-        sub_created = 0
-        for s in EXAMPLE_SUBJECTS:
-            _, created = Subject.objects.get_or_create(
-                name=s['name'],
-                defaults={'code': s['code'], 'description': s['description'], 'created_by': owner},
-            )
-            sub_created += int(created)
+            self.stdout.write('Reset: cleared notes and quizzes.')
 
         note_created = 0
         notes = []
@@ -219,15 +203,6 @@ class Command(BaseCommand):
             )
             note_created += int(created)
             notes.append(note)
-
-        # A few ratings so top-rated ordering has something to show.
-        raters = list(User.objects.exclude(pk=owner.pk)[:3])
-        for i, note in enumerate(notes[:6]):
-            for j, rater in enumerate(raters):
-                NoteRating.objects.update_or_create(
-                    note=note, user=rater,
-                    defaults={'score': 5 - ((i + j) % 3), 'comment': ''},
-                )
 
         quiz_created = 0
         if not options['no_quizzes']:
@@ -265,9 +240,9 @@ class Command(BaseCommand):
                 exam_created += 1
 
         self.stdout.write(
-            f'Seeded: {sub_created} new subjects, {note_created} new notes, '
+            f'Seeded: {note_created} new notes, '
             f'{quiz_created} new quizzes, {exam_created} new exams '
-            f'(totals: {Subject.objects.count()} subjects, {Note.objects.count()} notes, '
+            f'(totals: {Note.objects.count()} notes, '
             f'{QuizSet.objects.filter(is_exam=False).count()} quizzes, '
             f'{QuizSet.objects.filter(is_exam=True).count()} exams).'
         )

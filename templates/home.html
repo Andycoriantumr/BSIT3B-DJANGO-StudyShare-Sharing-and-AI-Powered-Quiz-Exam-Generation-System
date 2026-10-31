@@ -23,9 +23,9 @@
       <form class="ss-prompt" id="ssPromptForm" action="{% url 'chat:start' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <input type="hidden" name="think" value="0" data-ss-think-input>
-        <div class="ss-attachment-control" data-ss-attachment-control>
-          <input class="ss-attachment-file" id="ssNewChatFiles" type="file" name="files" accept=".pdf,.txt,.md,.csv,.docx" multiple data-ss-file-input="files" aria-label="Choose files">
-          <label class="ss-prompt-plus" for="ssNewChatFiles" role="button" tabindex="0" title="Upload a file to generate practice questions" aria-label="Upload a file to generate practice questions">
+        <div class="ss-attachment-control" data-ss-attachment-control data-ss-max-files="5">
+          <input class="ss-attachment-file" id="ssNewChatFiles" type="file" name="files" accept=".pdf,.txt,.md,.csv,.docx" multiple data-ss-file-input="files" aria-label="Choose up to 5 files">
+          <label class="ss-prompt-plus" for="ssNewChatFiles" role="button" tabindex="0" title="Upload up to 5 files to generate practice questions" aria-label="Upload up to 5 files to generate practice questions">
             <svg class="ss-icon"><use href="#icon-plus"></use></svg>
           </label>
         </div>
@@ -53,22 +53,10 @@
         </div>
       </form>
 
-      <div class="ss-suggestions">
-        <a class="ss-suggestion" href="{% url 'notes:exam_builder' %}">
-          <span class="ss-suggestion-icon"><svg class="ss-icon"><use href="#icon-pen"></use></svg></span>
-          <span>Create a quiz from your notes</span>
-          <svg class="ss-icon ss-suggestion-arrow"><use href="#icon-chevron-right"></use></svg>
-        </a>
-      </div>
-
       <div class="ss-snapshot" aria-label="Your activity">
         <span class="ss-snapshot-item"><strong>{{ stats.my_notes }}</strong> uploads</span>
         <span class="ss-snapshot-dot" aria-hidden="true"></span>
-        {% if can_moderate %}
-        <span class="ss-snapshot-item"><strong>{{ stats.quizzes_total }}</strong> quizzes generated</span>
-        {% else %}
         <span class="ss-snapshot-item"><strong>{{ stats.my_attempts }}</strong> quizzes taken</span>
-        {% endif %}
         <span class="ss-snapshot-dot" aria-hidden="true"></span>
         <span class="ss-snapshot-item"><strong>{{ stats.my_avg }}%</strong> average score</span>
         {% if can_moderate %}

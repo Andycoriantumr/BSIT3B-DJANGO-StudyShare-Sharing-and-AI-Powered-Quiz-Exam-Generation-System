@@ -175,29 +175,30 @@ def home_redirect(request):
 def home(request):
     from django.db.models import Avg
 
+    from apps.chat.models import ChatQuizAttempt, MessageAttachment
     from apps.chat.selectors import recent_conversations
-    from apps.notes.models import Note, QuizAttempt, QuizSet, Subject
+    from apps.notes.models import Note
     from apps.users.roles import can_admin, can_moderate, ensure_profile
 
     ensure_profile(request.user)
     guest_session = is_guest(request.user)
+    chat_attempts = ChatQuizAttempt.objects.filter(taker=request.user)
     stats = {
-        'my_notes': Note.objects.filter(uploaded_by=request.user).count(),
-        'quizzes_total': QuizSet.objects.count(),
-        'my_attempts': QuizAttempt.objects.filter(taker=request.user).count(),
-        'my_avg': QuizAttempt.objects.filter(taker=request.user).aggregate(a=Avg('percentage'))['a'] or 0,
+        'my_notes': MessageAttachment.objects.filter(
+            message__conversation__user=request.user
+        ).count(),
+        'my_attempts': chat_attempts.count(),
+        'my_avg': chat_attempts.aggregate(a=Avg('percentage'))['a'] or 0,
         'pending_notes': Note.objects.filter(status=Note.STATUS_PENDING).count() if can_moderate(request.user) else 0,
     }
     stats['my_avg'] = round(stats['my_avg'], 2)
 
     display_name, initials = display_identity(request.user)
 
-    sidebar_subjects = Subject.objects.filter(is_active=True).order_by('name')[:3]
     sidebar_conversations = recent_conversations(request.user)
 
     return render(request, 'home.html', {
         'stats': stats,
-        'sidebar_subjects': sidebar_subjects,
         'sidebar_conversations': sidebar_conversations,
         'active_conversation': None,
         'display_name': display_name,

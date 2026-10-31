@@ -69,7 +69,7 @@ def upgrade_guest_user(user, *, username, first_name, last_name, email,
                        password):
     """Turn the current guest into a registered account in place.
 
-    Using the same user row keeps every conversation, note, rating, quiz, and
+    Using the same user row keeps every conversation, note, quiz, and
     attempt created before registration.
     """
     with transaction.atomic():
@@ -89,11 +89,7 @@ def upgrade_guest_user(user, *, username, first_name, last_name, email,
 
 
 def merge_guest_data(guest, target):
-    """Move everything owned by ``guest`` to ``target``, then delete the guest.
-
-    Rating and pending-report conflicts keep the target account's existing
-    record so unique constraints are never violated.
-    """
+    """Move everything owned by ``guest`` to ``target``, then delete the guest."""
     if not guest or not target or guest.pk == target.pk:
         return
     if not is_guest(guest):
@@ -101,45 +97,13 @@ def merge_guest_data(guest, target):
 
     # Imported lazily so app loading never depends on this helper.
     from apps.chat.models import Conversation
-    from apps.info.models import Info
-    from apps.notes.models import (
-        Note,
-        NoteRating,
-        NoteReport,
-        QuizAttempt,
-        QuizSet,
-        Subject,
-    )
+    from apps.notes.models import Note, QuizAttempt, QuizSet
 
     with transaction.atomic():
-        target_rated_notes = set(
-            NoteRating.objects.filter(user=target)
-            .values_list('note_id', flat=True)
-        )
-        NoteRating.objects.filter(
-            user=guest, note_id__in=target_rated_notes
-        ).delete()
-        NoteRating.objects.filter(user=guest).update(user=target)
-
-        target_pending_reports = set(
-            NoteReport.objects.filter(
-                reporter=target, status=NoteReport.STATUS_PENDING
-            ).values_list('note_id', flat=True)
-        )
-        NoteReport.objects.filter(
-            reporter=guest,
-            status=NoteReport.STATUS_PENDING,
-            note_id__in=target_pending_reports,
-        ).delete()
-        NoteReport.objects.filter(reporter=guest).update(reporter=target)
-        NoteReport.objects.filter(reviewed_by=guest).update(reviewed_by=target)
-
         Conversation.objects.filter(user=guest).update(user=target)
         Note.objects.filter(uploaded_by=guest).update(uploaded_by=target)
-        Subject.objects.filter(created_by=guest).update(created_by=target)
         QuizSet.objects.filter(created_by=guest).update(created_by=target)
         QuizAttempt.objects.filter(taker=guest).update(taker=target)
-        Info.objects.filter(user=guest).update(user=target)
 
         guest.delete()
 

@@ -74,7 +74,7 @@
                   {% for option in question.options %}
                   <label class="ss-quiz-option">
                     <input type="radio" name="question_{{ question_index }}" value="{{ option }}" data-ss-quiz-answer>
-                    <span class="ss-quiz-option-text">{{ option }}</span>
+                    <span class="ss-quiz-option-text">{{ option|upper }}</span>
                   </label>
                   {% endfor %}
                 </div>
@@ -139,9 +139,9 @@
       <div class="ss-attachment-preview" data-ss-attachment-preview hidden></div>
       <div class="ss-composer-tools">
         <div class="ss-composer-tools-group">
-          <div class="ss-attachment-control" data-ss-attachment-control>
-            <input class="ss-attachment-file" id="ssChatFiles" type="file" name="files" accept=".pdf,.txt,.md,.csv,.docx" multiple data-ss-file-input="files" aria-label="Choose files">
-            <label class="ss-icon-btn ss-attach-btn" for="ssChatFiles" role="button" tabindex="0" title="Upload a file to generate practice questions" aria-label="Upload a file to generate practice questions">
+          <div class="ss-attachment-control" data-ss-attachment-control data-ss-max-files="5">
+            <input class="ss-attachment-file" id="ssChatFiles" type="file" name="files" accept=".pdf,.txt,.md,.csv,.docx" multiple data-ss-file-input="files" aria-label="Choose up to 5 files">
+            <label class="ss-icon-btn ss-attach-btn" for="ssChatFiles" role="button" tabindex="0" title="Upload up to 5 files to generate practice questions" aria-label="Upload up to 5 files to generate practice questions">
               <svg class="ss-icon"><use href="#icon-plus"></use></svg>
             </label>
           </div>

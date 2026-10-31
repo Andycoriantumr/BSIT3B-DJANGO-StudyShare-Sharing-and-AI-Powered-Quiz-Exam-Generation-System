@@ -7,14 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.chat.models import Conversation, Message
-from apps.info.models import Info
-from apps.notes.models import (
-    Note,
-    NoteRating,
-    QuizAttempt,
-    QuizSet,
-    Subject,
-)
+from apps.notes.models import Note, QuizAttempt, QuizSet
 from apps.users.guests import create_guest_user, delete_stale_guests
 from apps.users.models import Profile
 
@@ -190,28 +183,11 @@ class GuestLoginMergeTests(TestCase):
         self.guest_note = _make_note(self.guest, title='Guest note')
         self.target_note = _make_note(self.target, title='Target note')
 
-        # The guest rating is discarded where the target already rated a note.
-        NoteRating.objects.create(
-            note=self.target_note, user=self.target, score=2
-        )
-        NoteRating.objects.create(
-            note=self.target_note, user=self.guest, score=5
-        )
-        NoteRating.objects.create(
-            note=self.guest_note, user=self.guest, score=4
-        )
-
-        self.subject = Subject.objects.create(
-            name='Guest Subject', created_by=self.guest
-        )
         self.quiz = QuizSet.objects.create(
             note=self.target_note, created_by=self.guest, title='Guest quiz'
         )
         self.attempt = QuizAttempt.objects.create(
             quiz=self.quiz, taker=self.guest, score=1, total=1, percentage=100
-        )
-        self.info = Info.objects.create(
-            name='Guest Record', age=20, address='Campus', user=self.guest
         )
 
     def test_signing_in_moves_guest_data_to_the_account(self):
@@ -226,34 +202,13 @@ class GuestLoginMergeTests(TestCase):
 
         self.conversation.refresh_from_db()
         self.guest_note.refresh_from_db()
-        self.subject.refresh_from_db()
         self.quiz.refresh_from_db()
         self.attempt.refresh_from_db()
-        self.info.refresh_from_db()
 
         self.assertEqual(self.conversation.user_id, self.target.pk)
         self.assertEqual(self.guest_note.uploaded_by_id, self.target.pk)
-        self.assertEqual(self.subject.created_by_id, self.target.pk)
         self.assertEqual(self.quiz.created_by_id, self.target.pk)
         self.assertEqual(self.attempt.taker_id, self.target.pk)
-        self.assertEqual(self.info.user_id, self.target.pk)
-
-        # The existing account rating wins; the guest rating is dropped.
-        self.assertEqual(
-            NoteRating.objects.get(
-                note=self.target_note, user=self.target
-            ).score,
-            2,
-        )
-        self.assertFalse(
-            NoteRating.objects.filter(user=self.guest).exists()
-        )
-        self.assertEqual(
-            NoteRating.objects.get(
-                note=self.guest_note, user=self.target
-            ).score,
-            4,
-        )
 
 
 class GuestCleanupTests(TestCase):

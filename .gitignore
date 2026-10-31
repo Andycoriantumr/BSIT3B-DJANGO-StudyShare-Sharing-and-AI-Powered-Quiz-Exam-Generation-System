@@ -8,6 +8,12 @@ __pycache__/
 *.log
 media/
 staticfiles/
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Local database backups
+backups/
 
 # Environment / secrets (never commit API keys)
 .env

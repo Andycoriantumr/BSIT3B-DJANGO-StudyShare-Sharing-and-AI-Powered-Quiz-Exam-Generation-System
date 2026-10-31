@@ -6,7 +6,7 @@
 <form method="POST" enctype="multipart/form-data">{% csrf_token %}
   <div class="row g-3">
     <div class="col-md-12">{{ form.title.label_tag }}{{ form.title }}{% if form.title.errors %}<div class="text-danger small">{{ form.title.errors }}</div>{% endif %}</div>
-    <div class="col-md-4"><label class="form-label" for="id_subject">Subject</label>{{ form.subject }}<datalist id="subject-list">{% for s in subjects %}<option value="{{ s.name }}">{% endfor %}</datalist>{% if form.subject.errors %}<div class="text-danger small">{{ form.subject.errors }}</div>{% endif %}<div class="form-hint">Choose from <a href="{% url 'notes:subject_list' %}">managed subjects</a> or type new.</div></div>
+    <div class="col-md-4"><label class="form-label" for="id_subject">Subject</label>{{ form.subject }}<datalist id="subject-list">{% for s in subjects %}<option value="{{ s }}">{% endfor %}</datalist>{% if form.subject.errors %}<div class="text-danger small">{{ form.subject.errors }}</div>{% endif %}<div class="form-hint">Suggestions come from existing notes; type a new subject if needed.</div></div>
     <div class="col-md-4">{{ form.instructor.label_tag }}{{ form.instructor }}</div>
     <div class="col-md-4">{{ form.school_year.label_tag }}{{ form.school_year }}</div>
     <div class="col-md-12">{{ form.topic.label_tag }}{{ form.topic }}</div>

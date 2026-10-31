@@ -9,7 +9,7 @@
   <title>{% block title %}StudyShare — Dashboard{% endblock %}</title>
   <link rel="preconnect" href="https://rsms.me/">
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-  <link rel="stylesheet" href="{% static 'css/chat-dashboard.css' %}?v=20261029f">
+  <link rel="stylesheet" href="{% static 'css/chat-dashboard.css' %}?v=20261030b">
   {% block head_styles %}{% endblock %}
   {% block extra_head %}{% endblock %}
 </head>
@@ -189,11 +189,6 @@
         <a class="ss-menu-item" href="{% url 'notes:note_list' %}">
           <svg class="ss-icon"><use href="#icon-search"></use></svg>Uploaded notes
         </a>
-        {% if can_admin %}
-        <a class="ss-menu-item" href="{% url 'info:info_list' %}">
-          <svg class="ss-icon"><use href="#icon-info"></use></svg>System info
-        </a>
-        {% endif %}
         <div class="ss-menu-sep"></div>
         {% if is_guest %}
         <p class="ss-menu-guest-note">Create an account to keep your chats, notes, and quiz scores.</p>
@@ -226,7 +221,7 @@
 
   <div class="ss-toast" id="ssToast" role="status" aria-live="polite"></div>
 
-  <script src="{% static 'js/chat-dashboard.js' %}?v=20261029f" defer></script>
+  <script src="{% static 'js/chat-dashboard.js' %}?v=20261030b" defer></script>
   {% block vendor_js %}{% endblock %}
   {% block extra_js %}{% endblock %}
 </body>

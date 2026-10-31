@@ -8,7 +8,7 @@
 
 ## Features
 
-- **Notes sharing** — upload (pdf/docx) or paste text, organized by subject, instructor, topic, school year; search, filter chips, sort (newest/oldest/top-rated)
+- **Notes sharing** — upload (pdf/docx) or paste text, organized by subject, instructor, topic, school year; search, filter chips, sort (newest/oldest)
 - **Guest-first access** — open the app and start studying immediately; a temporary guest account is created behind the scenes, and signing in or registering keeps the chats, notes, and quiz attempts you already made
 - **AI quiz/exam generator** — per-note quizzes plus multi-note automated exams with printable paper (Name/Date/Score boxes) and instructor answer key; providers: OpenAI, Gemini, OpenRouter, offline local fallback
 - **AI study chat** — dashboard prompt starts a saved conversation, follows up with context from previous turns, and searches StudyShare notes for relevant excerpts; uploading a file automatically generates an answerable practice quiz from its contents (choose 1–50 questions), then shows the score and answer key after submission and saves a viewable, printable attempt to My Quizzes and My Progress; uploaded files appear in Uploaded Notes with private preview, download, and delete actions; chat history appears in the sidebar and replies use the same providers (offline note-summary fallback)
@@ -16,30 +16,104 @@
 
 ## Tech stack
 
-Django 5.2, SQLite (dev) / MySQL optional, Tabler + Bootstrap 5 (no build step),
-ApexCharts (analytics), stdlib-only AI clients (no extra dependencies).
+Django 6.1, SQLite (default) / MySQL optional, Tabler + Bootstrap 5 (no build
+step), ApexCharts (analytics), stdlib-only AI clients (no extra dependencies).
+
+## Project structure
+
+```text
+mysite/                 Django settings and root URL configuration
+apps/
+  core/                 Home, auth views, guest middleware, seed_demo command
+  users/                Profiles, roles, guest accounts, user management
+  notes/                Notes, quizzes, attempts
+  chat/                 AI study chat, attachments, chat quizzes
+templates/              UI templates grouped by feature
+static/                 Tabler theme, app CSS/JS, vendored libraries
+scripts/export_sql.py   Regenerate the SQL exports from SQL/db.sqlite3
+SQL/                    Live SQLite database + schema/data exports
+```
 
 ## Quick start
 
 ```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_examples   # demo subjects, notes, quizzes, exams
+python manage.py seed_demo
 python manage.py runserver 8000
 ```
 
-Open http://127.0.0.1:8000/ and start studying as a guest. To try a role-based
-account, sign in with one of the demo accounts:
+Open http://127.0.0.1:8000/ and start studying as a guest. To try the
+role-based views, sign in with a demo account:
 
 | Role | Username | Password |
 |---|---|---|
-| User | `andy` | `Andy123456` |
+| Student | `andy` | `Andy123456` |
 
+`seed_demo` is idempotent: it creates or repairs the demo student account, then
+calls `seed_examples` to add 10 notes, 10 quizzes, and 2 exams. Use
+`python manage.py seed_examples --user <username>` if you only want content.
+
+If you also want the instructor/moderator and administrator roles for a demo,
+run `python manage.py seed_demo --with-staff`.
 
 Guest chats and quizzes are temporary. Registering upgrades the same guest
 account in place, while signing in moves guest-owned work into the existing
 account. Abandoned guest accounts can be cleaned up with
 `python manage.py cleanup_guests --days 30`.
+
+## Database
+
+The default database is SQLite at `SQL/db.sqlite3`. It is already migrated and
+seeded in this repository, so `python manage.py runserver 8000` works right
+away. To rebuild it from scratch:
+
+```bash
+python manage.py migrate
+python manage.py seed_demo
+```
+
+To start over completely, delete `SQL/db.sqlite3` first, then run the two
+commands above. Schema changes are tracked with Django migrations under
+`apps/*/migrations/`.
+
+### MySQL / MariaDB (optional)
+
+1. Create an empty `studyshare` database in phpMyAdmin or the MySQL shell.
+2. Install the driver: `pip install mysqlclient`.
+3. Copy `.env.example` to `.env` and set `USE_MYSQL=1` plus the `MYSQL_*`
+   connection values.
+4. Run `python manage.py migrate` and `python manage.py seed_demo`.
+
+### SQL exports
+
+- `SQL/db.sqlite3` — live SQLite database used by Django.
+- `SQL/studyshare_schema.sql` — SQLite schema + demo rows (13 tables).
+- `SQL/studyshare_schema_mysql.sql` — MySQL/MariaDB schema + demo rows
+  (13 tables, InnoDB/utf8mb4, ready for phpMyAdmin import).
+
+The two schema files include `auth_user` and every StudyShare table.
+Regenerate them after changing the models or demo data:
+
+```bash
+python scripts/export_sql.py
+```
+
+The running application should still be created with `python manage.py migrate`;
+the SQL files are for documentation, submission, and database imports.
+
+## Tests
+
+```bash
+python manage.py test
+```
+
+The suite covers the guest flow, notes and moderation, quiz generation and
+scoring, chat, roles, and the demo seed command.
 
 ## AI providers (optional)
 
@@ -63,11 +137,6 @@ one explicitly. Gemini requests use the `x-goog-api-key` header and disable
 thinking so the full output budget goes to the visible answer. You can also
 export the same variables in your shell instead of using `.env`.
 
-
-## Docs
-
-- `SQL/studyshare_schema.sql` — SQLite schema + data (all 10 tables with INSERTs; import with sqlite3, NOT phpMyAdmin)
-- `SQL/studyshare_schema_mysql.sql` — MySQL/MariaDB schema + data (all 10 tables with INSERTs; phpMyAdmin import)
 
 ## BSIT Class Project Concept Paper
 
@@ -121,7 +190,7 @@ Specifically, the project will aim to:
 
 **Setting and coverage:** The project will focus on a web-based study support platform for students and academic personnel in a college or similar learning environment. Its coverage will include study-resource sharing, AI-assisted study chat and question generation, quiz participation, progress review, and administration of user access and shared content.
 
-**Core modules:** The system will include user accounts and role management; study-note upload and organization; browsing and search; content ratings and moderation; AI study chat; quiz and exam generation; answer submission and scoring for supported quiz types; saved quiz attempts and progress; and administrative monitoring features.
+**Core modules:** The system will include user accounts and role management; study-note upload and organization; browsing and search; content moderation; AI study chat; quiz and exam generation; answer submission and scoring for supported quiz types; saved quiz attempts and progress; and administrative monitoring features.
 
 **Technology stack:** The application will use Python and Django for backend processing and SQLite for local development. The project configuration will also support an alternative relational database deployment. The user interface will use HTML, CSS, JavaScript, and the existing Bootstrap/Tabler components. AI-enabled features will connect to supported providers such as Gemini, OpenAI, or OpenRouter when configured, with local fallback behavior for selected functions.
 

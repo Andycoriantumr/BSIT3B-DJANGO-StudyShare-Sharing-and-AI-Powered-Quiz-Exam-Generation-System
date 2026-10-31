@@ -1064,7 +1064,8 @@ summary:hover {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
+  align-items: center;
   padding: 56px;
   overflow: hidden;
   border-left: 1px solid rgba(255, 255, 255, 0.06);
@@ -1090,6 +1091,7 @@ summary:hover {
 .ss-auth-quote {
   position: relative;
   max-width: 430px;
+  text-align: center;
 }
 
 .ss-auth-quote h2 {
@@ -1119,6 +1121,7 @@ summary:hover {
 .ss-auth-features li {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   color: #cfcfcf;
   font-size: 13px;

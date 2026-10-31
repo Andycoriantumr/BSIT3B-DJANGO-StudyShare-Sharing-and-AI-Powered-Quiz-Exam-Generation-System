@@ -38,7 +38,7 @@
       <div class="question">
         <p><strong>{{ forloop.counter }}. {{ question.question_text }}</strong></p>
         {% if question.options %}
-        <ul>{% for option in question.options %}<li>{{ option }}</li>{% endfor %}</ul>
+        <ul>{% for option in question.options %}<li>{{ option|upper }}</li>{% endfor %}</ul>
         {% endif %}
       </div>
       {% endfor %}

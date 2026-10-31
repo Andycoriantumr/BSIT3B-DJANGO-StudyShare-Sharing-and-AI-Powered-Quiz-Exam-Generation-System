@@ -828,7 +828,7 @@ a {
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: 86px 28px 22px;
+  padding: 64px 28px 22px;
 }
 
 .ss-hero {
@@ -836,13 +836,14 @@ a {
   flex: 1 1 auto;
   align-items: center;
   justify-content: center;
-  padding: 16px 0 34px;
+  padding: 0 0 34px;
 }
 
 .ss-hero-inner {
   width: 100%;
   max-width: 700px;
   margin: 0 auto;
+  transform: translateY(-26px);
 }
 
 .ss-greeting {
@@ -962,15 +963,23 @@ a {
 .ss-prompt {
   display: flex;
   flex-wrap: wrap;
+  align-content: center;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  height: auto;
   min-height: 58px;
   padding: 8px 9px 8px 8px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
   background: var(--ss-surface);
   box-shadow: 0 12px 36px -20px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, border-radius 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ss-prompt.ss-has-attachments {
+  align-content: flex-start;
+  padding: 10px 10px 10px 8px;
+  border-radius: 24px;
 }
 
 .ss-prompt:focus-within {
@@ -2609,6 +2618,11 @@ button.ss-suggestion {
   .ss-prompt {
     min-height: 54px;
     padding: 6px 7px 6px 6px;
+  }
+
+  .ss-prompt.ss-has-attachments {
+    padding: 8px 7px;
+    border-radius: 20px;
   }
 
   .ss-think {

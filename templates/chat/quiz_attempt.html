@@ -85,7 +85,7 @@
     <p>{{ item.question_text|linebreaksbr }}</p>
     <p>
       <strong>Your answer:</strong>
-      {% if item.submitted %}{{ item.submitted|linebreaksbr }}{% else %}<span class="text-muted">No answer</span>{% endif %}
+      {% if item.submitted %}{% if item.graded %}{{ item.submitted|upper|linebreaksbr }}{% else %}{{ item.submitted|linebreaksbr }}{% endif %}{% else %}<span class="text-muted">No answer</span>{% endif %}
     </p>
     {% if item.graded %}
       <p>
@@ -96,7 +96,7 @@
       <p><strong>Result:</strong> <span class="text-muted">Not auto-scored</span></p>
     {% endif %}
     {% if item.answer %}
-    <p><strong>Answer key:</strong> {{ item.answer|linebreaksbr }}</p>
+    <p><strong>Answer key:</strong> {% if item.graded %}{{ item.answer|upper|linebreaksbr }}{% else %}{{ item.answer|linebreaksbr }}{% endif %}</p>
     {% endif %}
     {% if item.explanation %}
     <p class="text-muted mb-0"><strong>Explanation:</strong> {{ item.explanation|linebreaksbr }}</p>

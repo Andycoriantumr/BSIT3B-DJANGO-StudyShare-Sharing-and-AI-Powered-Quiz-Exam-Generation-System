@@ -70,9 +70,9 @@
   <div class="card-body">
     <p class="fw-semibold">{{ q.question_text }}</p>
     {% if q.question_type == 'mcq' %}
-    <ol type="A" class="mb-2">{% for opt in q.options %}<li class="mb-1">{{ opt }}</li>{% endfor %}</ol>
+    <ol type="A" class="mb-2">{% for opt in q.options %}<li class="mb-1">{{ opt|upper }}</li>{% endfor %}</ol>
     {% elif q.question_type == 'true_false' %}
-    <div class="d-flex gap-2 mb-2"><span class="badge bg-light text-dark border">True</span><span class="badge bg-light text-dark border">False</span><span class="text-muted small">Circle one</span></div>
+    <div class="d-flex gap-2 mb-2">{% for opt in q.options %}<span class="badge bg-light text-dark border">{{ opt|upper }}</span>{% empty %}<span class="badge bg-light text-dark border">TRUE</span><span class="badge bg-light text-dark border">FALSE</span>{% endfor %}<span class="text-muted small">Circle one</span></div>
     {% elif q.question_type == 'short_answer' %}
     <div class="border rounded p-3 mb-2" style="min-height:70px"></div>
     {% else %}
@@ -80,7 +80,7 @@
     {% endif %}
     {% if show_answers %}
     <details><summary class="text-primary" style="cursor:pointer">Show answer / explanation</summary>
-      <div class="mt-2 p-2 bg-green-lt rounded">{% if q.correct_answer %}<strong>Answer:</strong> {{ q.correct_answer }}<br>{% endif %}{% if q.explanation %}<span class="text-muted">{{ q.explanation }}</span>{% endif %}</div>
+      <div class="mt-2 p-2 bg-green-lt rounded">{% if q.correct_answer %}<strong>Answer:</strong> {% if q.question_type == 'mcq' or q.question_type == 'true_false' %}{{ q.correct_answer|upper }}{% else %}{{ q.correct_answer }}{% endif %}<br>{% endif %}{% if q.explanation %}<span class="text-muted">{{ q.explanation }}</span>{% endif %}</div>
     </details>
     {% else %}
     <div class="alert alert-info py-2 mb-0"><i class="fas fa-lock me-1"></i>Answers unlock after you submit this quiz via <a href="{% url 'notes:quiz_take' quiz.pk %}" class="alert-link">Take Quiz</a>.</div>
@@ -89,6 +89,6 @@
 </div>
 {% empty %}<div class="card"><div class="card-body text-muted">No questions in this quiz.</div></div>{% endfor %}
 {% if quiz.is_exam and show_answers %}
-<div class="card mt-3" style="break-before:page"><div class="card-header"><h3 class="card-title">Answer Key — for instructor only (do not distribute)</h3></div><div class="table-responsive"><table class="table card-table"><thead><tr><th>#</th><th>Type</th><th>Correct answer</th><th>Explanation</th></tr></thead><tbody>{% for q in quiz.questions.all %}<tr><td>{{ forloop.counter }}</td><td>{{ q.get_question_type_display }}</td><td>{{ q.correct_answer|default:"—" }}</td><td class="text-muted">{{ q.explanation|truncatewords:20 }}</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card mt-3" style="break-before:page"><div class="card-header"><h3 class="card-title">Answer Key — for instructor only (do not distribute)</h3></div><div class="table-responsive"><table class="table card-table"><thead><tr><th>#</th><th>Type</th><th>Correct answer</th><th>Explanation</th></tr></thead><tbody>{% for q in quiz.questions.all %}<tr><td>{{ forloop.counter }}</td><td>{{ q.get_question_type_display }}</td><td>{% if q.question_type == 'mcq' or q.question_type == 'true_false' %}{{ q.correct_answer|default:"—"|upper }}{% else %}{{ q.correct_answer|default:"—" }}{% endif %}</td><td class="text-muted">{{ q.explanation|truncatewords:20 }}</td></tr>{% endfor %}</tbody></table></div></div>
 {% endif %}
 {% endblock %}

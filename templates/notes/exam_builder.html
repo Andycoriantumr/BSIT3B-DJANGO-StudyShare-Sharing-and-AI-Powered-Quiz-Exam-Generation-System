@@ -8,7 +8,7 @@
 <div class="page-header d-print-none"><div class="row align-items-center"><div class="col">
 <div class="page-pretitle">Automation — multi-note exams + bulk quizzes</div>
 <h2 class="page-title">Quiz & Exam Generator</h2>
-<div class="text-muted">Build one printable exam from your top notes, or bulk-generate quizzes for every note missing one.</div>
+<div class="text-muted">Build one printable exam from recent notes, or bulk-generate quizzes for every note missing one.</div>
 </div><div class="col-auto"><a href="{% url 'notes:exam_list' %}" class="btn btn-outline-primary">View Exams</a></div></div></div>
 <br>
 <div class="row">
@@ -16,14 +16,14 @@
 <div class="card mb-3"><div class="card-header"><h3 class="card-title">1 — Build an exam automatically</h3></div><div class="card-body">
 <form method="POST" action="{% url 'notes:exam_builder' %}">{% csrf_token %}
 <div class="row g-2">
-<div class="col-md-6"><label class="form-label">Subject</label><select name="subject" class="form-select"><option value="">All subjects (mixed)</option>{% for s in subjects %}<option value="{{ s.name }}">{{ s.name }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label class="form-label">Subject</label><select name="subject" class="form-select"><option value="">All subjects (mixed)</option>{% for s in subjects %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
 <div class="col-md-6"><label class="form-label">School year</label><select name="school_year" class="form-select"><option value="">All years</option>{% for y in school_years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}</select></div>
 <div class="col-md-6"><label class="form-label">Topic contains</label><input name="topic" class="form-control" placeholder="optional, e.g. Cell"></div>
 <div class="col-md-6"><label class="form-label">Source notes (max)</label><select name="max_notes" class="form-select"><option value="2">2</option><option value="4" selected>4</option><option value="6">6</option><option value="8">8</option></select></div>
 <div class="col-md-4"><label class="form-label">Questions (1–50)</label><select name="num_questions" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="50">50</option></select></div>
 <div class="col-md-4"><label class="form-label">Type</label><select name="question_type" class="form-select"><option value="mixed">Mixed</option><option value="mcq">Multiple Choice</option><option value="true_false">True / False</option><option value="short_answer">Short Answer</option><option value="essay">Essay</option></select></div>
 <div class="col-md-4"><label class="form-label">AI Provider</label><select name="provider" class="form-select"><option value="auto">Auto</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="local">Local offline</option></select></div>
-<div class="col-md-6"><label class="form-label">Pick sources by</label><select name="order" class="form-select"><option value="top">Top rated</option><option value="newest">Newest</option></select></div>
+<div class="col-md-6"><label class="form-label">Pick sources by</label><select name="order" class="form-select"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div>
 <div class="col-md-6 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit"><i class="fas fa-robot me-1"></i>Auto-Build Exam</button></div>
 </div></form>
 <div class="text-muted small mt-2">Picks approved notes matching filters, merges them fairly into one prompt, generates once, saves as a printable exam paper with a separate answer key.</div>
@@ -34,7 +34,7 @@
 <div class="card mb-3"><div class="card-header"><h3 class="card-title">2 — Bulk automation (Instructor/Admin)</h3></div><div class="card-body">
 <form method="POST" action="{% url 'notes:exam_bulk_generate' %}">{% csrf_token %}
 <div class="row g-2">
-<div class="col-md-12"><label class="form-label">Subject (blank = all)</label><select name="subject" class="form-select"><option value="">All subjects</option>{% for s in subjects %}<option value="{{ s.name }}">{{ s.name }}</option>{% endfor %}</select></div>
+<div class="col-md-12"><label class="form-label">Subject (blank = all)</label><select name="subject" class="form-select"><option value="">All subjects</option>{% for s in subjects %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></div>
 <div class="col-md-4"><label class="form-label">Per quiz</label><select name="per_note" class="form-select"><option value="3">3</option><option value="5" selected>5</option><option value="10">10</option></select></div>
 <div class="col-md-4"><label class="form-label">Type</label><select name="question_type" class="form-select"><option value="mcq">MCQ</option><option value="mixed">Mixed</option><option value="true_false">T/F</option></select></div>
 <div class="col-md-4"><label class="form-label">Provider</label><select name="provider" class="form-select"><option value="auto">Auto</option><option value="local">Local</option><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></div>

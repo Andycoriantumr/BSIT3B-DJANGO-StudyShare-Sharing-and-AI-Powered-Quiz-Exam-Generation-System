@@ -14,6 +14,7 @@ Env / settings keys:
   OPENROUTER_SITE_URL / OPENROUTER_APP_NAME (optional OpenRouter headers)
 """
 
+from functools import lru_cache
 import json
 import os
 import re
@@ -24,10 +25,10 @@ from django.conf import settings
 
 MAX_SOURCE_CHARS = 12000
 GENERIC_DISTRACTORS = [
-    'None of the above',
-    'All of the above',
-    'Insufficient information',
-    'Depends on context',
+    'None of these',
+    'A different concept',
+    'Not stated in the notes',
+    'Cannot be determined',
 ]
 
 VALID_PROVIDERS = ('auto', 'local', 'openai', 'gemini', 'openrouter')
@@ -142,6 +143,10 @@ def _build_prompt(source_text, num_questions, question_type):
         'question_type (one of mcq, true_false, short_answer, essay), '
         'question_text, options (array of 4 strings for mcq, else []), '
         'correct_answer, explanation. '
+        'For multiple-choice questions, write every option in UPPERCASE, '
+        'make all four choices unique within the question, and do not reuse '
+        'the same set of choices across questions. Never include both '
+        '"ALL OF THE ABOVE" and "NONE OF THE ABOVE" in one question. '
         f'Question mix requested: {question_type}. Keep questions grounded in the notes.\n\n'
         f'NOTES:\n{source_text[:8000]}'
     )
@@ -187,27 +192,33 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
               'summarization, and practice testing improve long-term retention.'
         )
     if provider == 'local':
-        return {'questions': _generate_local(cleaned, num_questions, question_type), 'provider': 'local'}
+        return _quiz_result(
+            _generate_local(cleaned, num_questions, question_type), 'local'
+        )
 
     # Explicit provider request: try it, fall back to local.
     if provider in ('openai', 'gemini', 'openrouter'):
         try:
             questions = _try_provider(provider, cleaned, num_questions, question_type)
             if questions:
-                return {'questions': questions, 'provider': provider}
+                return _quiz_result(questions, provider)
         except Exception:
             pass
-        return {'questions': _generate_local(cleaned, num_questions, question_type), 'provider': 'local'}
+        return _quiz_result(
+            _generate_local(cleaned, num_questions, question_type), 'local'
+        )
 
     # auto: OpenRouter -> OpenAI -> Gemini -> local.
     for name in ('openrouter', 'openai', 'gemini'):
         try:
             questions = _try_provider(name, cleaned, num_questions, question_type)
             if questions:
-                return {'questions': questions, 'provider': name}
+                return _quiz_result(questions, name)
         except Exception:
             continue
-    return {'questions': _generate_local(cleaned, num_questions, question_type), 'provider': 'local'}
+    return _quiz_result(
+        _generate_local(cleaned, num_questions, question_type), 'local'
+    )
 
 
 def _try_provider(name, source_text, num_questions, question_type):
@@ -367,36 +378,397 @@ def _normalize_q(q, i):
     return {
         'question_type': qtype,
         'question_text': str(q.get('question_text', f'Question {i + 1}')).strip(),
-        'options': [str(o) for o in options[:4]],
+        'options': [str(o) for o in options[:6]],
         'correct_answer': str(q.get('correct_answer', '')).strip(),
         'explanation': str(q.get('explanation', '')).strip(),
         'order': i,
     }
 
 
+@lru_cache(maxsize=4096)
+def _option_key(value):
+    text = re.sub(r'[\W_]+', ' ', str(value or '').casefold())
+    return ' '.join(text.split())
+
+
+def _clean_mcq_options(raw_options, correct_answer):
+    """Strip, uppercase, and de-duplicate MCQ choices."""
+    options = []
+    seen = set()
+    for raw in raw_options or []:
+        text = str(raw or '').strip()
+        key = _option_key(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        options.append(text.upper())
+
+    # "All of the above" and "None of the above" together are contradictory.
+    answer_key = _option_key(correct_answer)
+    if 'ALL OF THE ABOVE' in options and 'NONE OF THE ABOVE' in options:
+        for redundant in ('NONE OF THE ABOVE', 'ALL OF THE ABOVE'):
+            if answer_key != _option_key(redundant):
+                options.remove(redundant)
+                break
+
+    if len(options) < 2:
+        options = ['OPTION A', 'OPTION B', 'OPTION C', 'OPTION D']
+    return options
+
+
+def _resolve_mcq_answer(answer, options):
+    """Map the stored answer to its uppercase option text."""
+    answer = str(answer or '').strip()
+    answer_key = _option_key(answer)
+    if answer_key:
+        for option in options:
+            if _option_key(option) == answer_key:
+                return option
+
+    letter = re.fullmatch(
+        r'(?:OPTION\s+)?([A-D])(?:[\.\):\-])?', answer, re.IGNORECASE
+    )
+    if letter:
+        index = ord(letter.group(1).upper()) - ord('A')
+        if 0 <= index < len(options):
+            return options[index]
+
+    if not answer:
+        return ''
+    upper = answer.upper()
+    if _option_key(upper) not in {_option_key(option) for option in options}:
+        if len(options) < 4:
+            options.append(upper)
+        elif options:
+            options[-1] = upper
+    return upper
+
+
+def _resolve_true_false_answer(answer):
+    key = _option_key(answer)
+    if key in ('true', 't', 'yes', 'y', '1', 'correct', 'right'):
+        return 'TRUE'
+    if key in ('false', 'f', 'no', 'n', '0', 'incorrect', 'wrong'):
+        return 'FALSE'
+    return str(answer or '').strip().upper() or 'TRUE'
+
+
+def _finalize_questions(questions):
+    """Apply consistent choice casing and remove redundant options."""
+    finalized = []
+    for index, raw in enumerate(questions or []):
+        question = dict(raw)
+        qtype = str(question.get('question_type', 'mcq')).lower()
+        if qtype not in ('mcq', 'true_false', 'short_answer', 'essay'):
+            qtype = 'mcq'
+        answer = str(question.get('correct_answer', '') or '').strip()
+
+        if qtype == 'mcq':
+            options = _clean_mcq_options(question.get('options') or [], answer)
+            answer = _resolve_mcq_answer(answer, options)
+            if answer in options:
+                answer_index = options.index(answer)
+                if answer_index >= 4:
+                    options.insert(0, options.pop(answer_index))
+            options = options[:4]
+        elif qtype == 'true_false':
+            options = ['TRUE', 'FALSE']
+            answer = _resolve_true_false_answer(answer)
+        else:
+            options = []
+
+        question.update({
+            'question_type': qtype,
+            'options': options,
+            'correct_answer': answer,
+            'order': question.get('order', index),
+        })
+        finalized.append(question)
+    return finalized
+
+
+def _quiz_result(questions, provider):
+    return {'questions': _finalize_questions(questions), 'provider': provider}
+
+
 # ---------------------------------------------------------------------------
 # Local fallback generator
 # ---------------------------------------------------------------------------
 
-_SENT_SPLIT = re.compile(r'(?<=[.!?])\s+')
-_WORD = re.compile(r"[A-Za-z][A-Za-z\-']{3,}")
+_SENT_SPLIT = re.compile(r'(?<=[.!?])(?:\s+|(?=[A-Z][a-z]))')
+_TERM_RE = re.compile(r"\b(?:[A-Z]{2,6}|[A-Za-z][A-Za-z\-']{3,})\b")
+_PHRASE_RE = re.compile(
+    r"\b([A-Za-z][A-Za-z\-']{3,})\s+([A-Za-z][A-Za-z\-']{3,})\b"
+)
+_META_LINE = re.compile(
+    r'^(?:(?:Title|Subject|Topic|Instructor|School Year|File):|=== SOURCE:).*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_STOPWORDS = frozenset('''
+a about above across active after again against all almost along already also
+although always am among an and another any anyone anything are around as at be
+because been before being below between both but by can cannot could did do does
+doing done down during each either else enough entire even ever every few final
+first for from further general had has have having he her here hers herself him
+himself his high higher how however i if important in indirect into is it its
+itself just know known large like long low lower main major many may me might
+minor more most much
+must my myself near need negative never new no nor not now of off on once only
+or other our ours ourselves out over own passive positive primary same secondary
+she should similar simple since single small social some specific such than that
+the their theirs them themselves then there these they this those through thus
+to too total under until up upon us used using various very was we were what when
+where which while who whom why will with within without would you your yours
+yourself yourselves
+'''.split())
+
+_VERB_STOPWORDS = frozenset('''
+absorb absorbs according added adds allow allows appears applied applies
+become becomes begin begins bind binds break breaks built call called calls
+capture captures carry carries cause causes change changed changes come comes
+compare compared consist consists contain contains continue control controls
+convert converts create creates depend depends describe describes determine
+determines differ differs emit emits enter enters form forms get gets give
+gives go goes help helps hold holds improve improves include includes increase
+increases indicate indicates involve involves leave leaves known maintain
+maintains make makes mean means move moves occur occurs pass passes produce
+produces protect protects provide provides refer refers reflect reflects
+regulate regulates release releases remain remains require requires result
+results show shows speed speeds spread spreads store stores support supports
+take takes tend tends transport transports turn turns use uses work works
+'''.split())
+
+_NOUN_SUFFIXES = (
+    'tion', 'sion', 'ment', 'ness', 'ity', 'ism', 'ance', 'ence',
+    'ology', 'graphy', 'sis', 'plasm', 'some', 'ase', 'ose', 'ide',
+    'meter', 'scope', 'troph', 'lysis', 'philia', 'ria',
+)
+
+_ADJECTIVE_SUFFIXES = (
+    'al', 'ar', 'ive', 'ous', 'ful', 'less', 'able', 'ible', 'ic',
+    'ary', 'ory', 'ent', 'ant',
+)
 
 
 def _sentences(text):
-    raw = _SENT_SPLIT.split(re.sub(r'\s+', ' ', text))
-    return [s.strip() for s in raw if len(s.strip()) >= 40][:30]
+    text = _META_LINE.sub(' ', text or '')
+    text = re.sub(r'[\u2022\u25cf\u25aa\u25e6]', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
+    out, seen = [], set()
+    for sentence in _SENT_SPLIT.split(text):
+        sentence = sentence.strip(' \t-–—')
+        sentence = re.sub(r'^(?:\d+[.)]\s*|[-*]\s*)', '', sentence)
+        if len(sentence) < 40:
+            continue
+        if len(sentence) > 360:
+            sentence = sentence[:357].rstrip() + '...'
+        key = sentence.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(sentence)
+        if len(out) >= 60:
+            break
+    return out
+
+
+def _is_content_term(term):
+    term = term.strip()
+    if not term or "'" in term:
+        return False
+    key = _option_key(term)
+    if not key or key in _STOPWORDS or key in _VERB_STOPWORDS:
+        return False
+    letters = key.replace(' ', '')
+    if len(letters) < 4 and not (
+        term.isupper() and 2 <= len(term) <= 6
+    ):
+        return False
+    return True
+
+
+def _looks_adjective(key):
+    last = key.rsplit(' ', 1)[-1]
+    if last.endswith(_NOUN_SUFFIXES):
+        return False
+    return last.endswith(_ADJECTIVE_SUFFIXES)
+
+
+def _phrase_candidates(sentence):
+    """Adjacent content words that read as a compound concept."""
+    phrases, seen = [], set()
+    for match in _PHRASE_RE.finditer(sentence):
+        first, second = match.group(1), match.group(2)
+        if not _is_content_term(first) or not _is_content_term(second):
+            continue
+        first_key = _option_key(first)
+        second_key = _option_key(second)
+        if first_key in _VERB_STOPWORDS:
+            continue
+        if second_key in _VERB_STOPWORDS or _looks_adjective(second_key):
+            continue
+        phrase = f'{first} {second}'
+        key = _option_key(phrase)
+        if not key or key in seen or len(key) > 40:
+            continue
+        seen.add(key)
+        phrases.append(phrase)
+    return phrases
+
+
+def _sentence_index(sentence):
+    """Keys, families, and tokens that already appear in the sentence."""
+    keys = {_option_key(raw) for raw in _TERM_RE.findall(sentence)}
+    keys.update(_option_key(phrase) for phrase in _phrase_candidates(sentence))
+    keys.discard('')
+    families = {_term_family(key) for key in keys}
+    tokens = {
+        token for key in keys for token in key.split() if len(token) >= 4
+    }
+    return keys, families, tokens
+
+
+def _overlaps_sentence(term_key, sentence_tokens):
+    for token in sentence_tokens:
+        if term_key == token:
+            return True
+        if len(term_key) >= 4 and (
+            term_key in token or token in term_key
+        ):
+            return True
+    return False
+
+
+def _term_score(term, count):
+    key = term.casefold()
+    norm = _option_key(term)
+    last = norm.rsplit(' ', 1)[-1]
+    score = min(count, 6) * 1.3
+    score += min(len(norm), 20) * 0.12
+    if term.isupper() and len(term) >= 2:
+        score += 2.0
+    if ' ' in norm:
+        score += 0.8
+    if last.endswith(_NOUN_SUFFIXES):
+        score += 1.6
+    if '-' in key:
+        score += 0.4
+    if key.endswith('ly'):
+        score -= 0.8
+    if _looks_adjective(norm):
+        score -= 1.1
+    return score
+
+
+def _term_family(key):
+    """Collapse simple plural forms so close variants are not both offered."""
+    if key.endswith('ies') and len(key) > 4:
+        return key[:-3] + 'y'
+    if key.endswith(('ses', 'xes', 'zes', 'ches', 'shes')) and len(key) > 4:
+        return key[:-2]
+    if key.endswith('s') and not key.endswith('ss') and len(key) > 4:
+        return key[:-1]
+    return key
+
+
+def _distractor_score(answer_key, term_key):
+    """Prefer distractors that look like the answer (length and ending)."""
+    score = 0.0
+    if len(answer_key) >= 3 and len(term_key) >= 3:
+        if answer_key[-3:] == term_key[-3:]:
+            score += 2.2
+        elif answer_key[-2:] == term_key[-2:]:
+            score += 1.1
+    score += max(0.0, 1.4 - 0.2 * abs(len(answer_key) - len(term_key)))
+    if answer_key[:1] == term_key[:1]:
+        score += 0.25
+    if term_key.endswith(_NOUN_SUFFIXES):
+        score += 0.2
+    return score
+
+
+def _blank_answer(sentence, answer):
+    """Blank the answer in place, ignoring case, and return None if absent."""
+    if not answer:
+        return None
+    pattern = re.compile(
+        r'(?<![A-Za-z0-9])' + re.escape(answer) + r'(?![A-Za-z0-9])',
+        re.IGNORECASE,
+    )
+    blanked, count = pattern.subn('_____', sentence, count=1)
+    return blanked if count else None
+
+
+def _match_case(original, replacement):
+    if replacement.isupper():
+        return replacement
+    if original[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement[:1].lower() + replacement[1:]
+
+
+def _ranked_terms(sentences):
+    freq, first = {}, {}
+    for sentence in sentences:
+        terms = [
+            raw for raw in _TERM_RE.findall(sentence)
+            if _is_content_term(raw)
+        ]
+        terms.extend(_phrase_candidates(sentence))
+        for raw in terms:
+            key = _option_key(raw)
+            if not key:
+                continue
+            freq[key] = freq.get(key, 0) + 1
+            first.setdefault(key, raw)
+    ranked = [
+        (_term_score(term, freq[key]), term.casefold(), term)
+        for key, term in first.items()
+    ]
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [term for _, _, term in ranked]
+
+
+def _sentence_terms(sentence, ranked_terms):
+    keys, _, _ = _sentence_index(sentence)
+    terms = [term for term in ranked_terms if _option_key(term) in keys]
+    phrases = _phrase_candidates(sentence)
+    if terms and phrases:
+        phrase_keys = {_option_key(phrase) for phrase in phrases}
+        phrase_tokens = {
+            token for key in phrase_keys for token in key.split()
+        }
+        terms = [
+            term for term in terms
+            if _option_key(term) in phrase_keys
+            or not set(_option_key(term).split()).issubset(phrase_tokens)
+        ]
+    if terms:
+        return terms
+    fallback, seen = [], set()
+    for raw in _TERM_RE.findall(sentence):
+        if not _is_content_term(raw):
+            continue
+        key = _option_key(raw)
+        if key in seen:
+            continue
+        seen.add(key)
+        fallback.append(raw)
+    return fallback
 
 
 def _keywords(text, exclude=''):
-    words = _WORD.findall(text)
+    """Ordered fallback terms for text with no recognised key concepts."""
     seen, out = set(), []
-    excl = (exclude or '').lower()
-    for w in words:
-        lw = w.lower()
-        if len(w) >= 5 and lw != excl and lw not in seen and len(lw) <= 20:
-            seen.add(lw)
-            out.append(w)
-        if len(out) >= 20:
+    excl = _option_key(exclude)
+    for raw in _TERM_RE.findall(text):
+        key = _option_key(raw)
+        if not key or key == excl or key in seen:
+            continue
+        seen.add(key)
+        out.append(raw)
+        if len(out) >= 60:
             break
     return out
 
@@ -404,27 +776,45 @@ def _keywords(text, exclude=''):
 def _generate_local(source_text, num_questions, question_type):
     sentences = _sentences(source_text)
     if not sentences:
-        sentences = ['Active recall and spaced repetition improve long-term retention.']
-    keywords = _keywords(source_text)
+        sentences = [
+            'Active recall and spaced repetition improve long-term retention.'
+        ]
+    ranked_terms = _ranked_terms(sentences)
+    if not ranked_terms:
+        ranked_terms = _keywords(source_text)
+    sentence_terms = [
+        _sentence_terms(sentence, ranked_terms) for sentence in sentences
+    ]
     order_map = {'mcq': 0, 'true_false': 1, 'short_answer': 2, 'essay': 3}
     questions = []
+    used_options = set()
+    used_texts = set()
+    usage = [0] * len(sentences)
     for i in range(num_questions):
-        sent = sentences[i % len(sentences)]
-        variant = i // len(sentences)
+        index = i % len(sentences)
+        sentence = sentences[index]
+        variant = usage[index]
+        usage[index] += 1
+        terms = sentence_terms[index]
         if question_type in order_map:
             kind = question_type
         else:
             kind = ['mcq', 'true_false', 'short_answer', 'essay'][i % 4]
         if kind == 'mcq':
-            questions.append(
-                _make_mcq(sent, keywords, source_text, i, variant)
+            question = _make_mcq(
+                sentence, terms, ranked_terms, i, variant,
+                used_options, used_texts,
             )
         elif kind == 'true_false':
-            questions.append(_make_tf(sent, i))
+            question = _make_tf(
+                sentence, terms, ranked_terms, i, variant, used_texts
+            )
         elif kind == 'short_answer':
-            questions.append(_make_short(sent, i))
+            question = _make_short(sentence, i, variant)
         else:
-            questions.append(_make_essay(sent, i))
+            question = _make_essay(sentence, i, variant)
+        used_texts.add(question['question_text'].casefold())
+        questions.append(question)
     return questions
 
 
@@ -436,60 +826,239 @@ _MCQ_PROMPTS = (
     'Based on the notes, which term belongs in the blank? "{}"',
 )
 
+_SHORT_PROMPTS = (
+    'In your own words, explain: "{}"',
+    'Summarize this idea from the notes: "{}"',
+    'Describe what this statement means: "{}"',
+)
 
-def _make_mcq(sentence, keywords, full_text, i, variant=0):
-    key_terms = _keywords(sentence)
-    answer = (
-        key_terms[variant % len(key_terms)]
-        if key_terms else 'the main concept'
-    )
-    distractors = [k for k in keywords if k.lower() != answer.lower()][:3]
-    while len(distractors) < 3:
-        cand = GENERIC_DISTRACTORS[len(distractors) % len(GENERIC_DISTRACTORS)]
-        if cand not in distractors:
-            distractors.append(cand)
-        else:
+_ESSAY_PROMPTS = (
+    'Discuss the significance of the following concept and give an example: "{}"',
+    'Explain this idea in detail and support it with an example: "{}"',
+)
+
+
+def _mcq_distractor_pool(answer, sentence, ranked_terms, used_options):
+    """Terms that are safe, plausible distractors for the answer."""
+    answer_key = _option_key(answer)
+    banned_families = {_term_family(answer_key)}
+    for raw in _TERM_RE.findall(sentence):
+        key = _option_key(raw)
+        if key:
+            banned_families.add(_term_family(key))
+
+    candidates, seen_families = [], set(banned_families)
+    for term in ranked_terms:
+        key = _option_key(term)
+        if not key:
+            continue
+        family = _term_family(key)
+        if family in seen_families:
+            continue
+        seen_families.add(family)
+        candidates.append(term)
+
+    def rank(term):
+        return (
+            -_distractor_score(answer_key, _option_key(term)),
+            _option_key(term),
+        )
+
+    fresh = [
+        term for term in candidates if _option_key(term) not in used_options
+    ]
+    stale = [
+        term for term in candidates if _option_key(term) in used_options
+    ]
+    return sorted(fresh, key=rank) + sorted(stale, key=rank)
+
+
+def _make_mcq(sentence, terms, ranked_terms, i, variant=0,
+              used_options=None, used_texts=None):
+    used_options = used_options if used_options is not None else set()
+    used_texts = used_texts if used_texts is not None else set()
+    terms = terms or _keywords(sentence) or ['the main concept']
+    start = variant % len(terms)
+    ordered_terms = terms[start:] + terms[:start]
+    prompt_start = variant % len(_MCQ_PROMPTS)
+
+    chosen = None
+    for term in ordered_terms:
+        blanked = _blank_answer(sentence, term)
+        if not blanked:
+            continue
+        for offset in range(len(_MCQ_PROMPTS)):
+            prompt = _MCQ_PROMPTS[
+                (prompt_start + offset) % len(_MCQ_PROMPTS)
+            ]
+            text = prompt.format(blanked)
+            if text.casefold() not in used_texts:
+                chosen = (term, text)
+                break
+        if chosen:
             break
+    if not chosen:
+        answer = ordered_terms[0]
+        blanked = _blank_answer(sentence, answer)
+        if blanked:
+            text = _MCQ_PROMPTS[prompt_start].format(blanked)
+        else:
+            text = (
+                'Which term is most closely associated with this '
+                f'statement? "{sentence}"'
+            )
+        chosen = (answer, text)
+    answer, question_text = chosen
+
+    pool = _mcq_distractor_pool(
+        answer, sentence, ranked_terms, used_options
+    )
+    answer_key = _option_key(answer)
+    distractors, used_families = [], set()
+    for term in pool:
+        key = _option_key(term)
+        family = _term_family(key)
+        if key == answer_key or family in used_families:
+            continue
+        used_families.add(family)
+        distractors.append(term)
+        if len(distractors) == 3:
+            break
+
+    for generic in GENERIC_DISTRACTORS:
+        if len(distractors) >= 3:
+            break
+        key = _option_key(generic)
+        family = _term_family(key)
+        if key == answer_key or family in used_families:
+            continue
+        used_families.add(family)
+        distractors.append(generic)
+
+    fallback_number = 1
+    while len(distractors) < 3:
+        fallback = f'OPTION {fallback_number}'
+        fallback_number += 1
+        key = _option_key(fallback)
+        family = _term_family(key)
+        if key == answer_key or family in used_families:
+            continue
+        used_families.add(family)
+        distractors.append(fallback)
+
     options = [answer] + distractors[:3]
-    # Deterministic rotation so the answer is not always first.
     shift = variant % len(options)
     options = options[shift:] + options[:shift]
-    blanked = sentence.replace(answer, '_____', 1) if answer in sentence else sentence
-    prompt = _MCQ_PROMPTS[variant % len(_MCQ_PROMPTS)]
+    used_options.update(_option_key(option) for option in options)
     return {
         'question_type': 'mcq',
-        'question_text': prompt.format(blanked),
-        'options': options[:4],
+        'question_text': question_text,
+        'options': options,
         'correct_answer': answer,
         'explanation': f'Based on the notes: "{sentence[:220]}"',
         'order': i,
     }
 
 
-def _make_tf(sentence, i):
+def _make_tf(sentence, terms, ranked_terms, i, variant=0, used_texts=None):
+    used_texts = used_texts if used_texts is not None else set()
+    true_text = f'True or False: {sentence}'
     is_true = (i % 2 == 0)
+    if is_true and true_text.casefold() in used_texts:
+        is_true = False
     if is_true:
-        statement = sentence
-        answer = 'True'
-        expl = 'This statement is directly supported by the notes.'
-    else:
-        statement = f'It is NOT the case that: {sentence[:200]}'
-        answer = 'False'
-        expl = 'Review the notes — the original statement was altered with a negation.'
+        return {
+            'question_type': 'true_false',
+            'question_text': true_text,
+            'options': ['True', 'False'],
+            'correct_answer': 'True',
+            'explanation': 'This statement is directly supported by the notes.',
+            'order': i,
+        }
+
+    sentence_keys = {
+        _option_key(term) for term in _TERM_RE.findall(sentence)
+    }
+    banned_families = {_term_family(key) for key in sentence_keys}
+    replacements = [
+        term for term in ranked_terms
+        if _term_family(_option_key(term)) not in banned_families
+    ]
+
+    in_order, seen = [], set()
+    for raw in _TERM_RE.findall(sentence):
+        key = _option_key(raw)
+        if key in seen or not _is_content_term(raw):
+            continue
+        seen.add(key)
+        in_order.append(raw)
+    originals = []
+    if in_order:
+        first_noun = next(
+            (
+                term for term in in_order
+                if not _looks_adjective(_option_key(term))
+            ),
+            in_order[0],
+        )
+        originals.append(first_noun)
+        first_key = _option_key(first_noun)
+        for term in terms:
+            if _option_key(term) != first_key:
+                originals.append(term)
+                break
+    if not originals:
+        originals = terms[:2]
+
+    statement = None
+    explanation = (
+        'Review the notes — the original statement was altered '
+        'with a negation.'
+    )
+    if originals and replacements:
+        original = originals[variant % len(originals)]
+        original_key = _option_key(original)
+        ranked_replacements = sorted(
+            replacements,
+            key=lambda term: (
+                -_distractor_score(original_key, _option_key(term)),
+                _option_key(term),
+            ),
+        )[:6]
+        replacement = ranked_replacements[
+            variant % len(ranked_replacements)
+        ]
+        pattern = re.compile(
+            r'(?<![A-Za-z0-9])' + re.escape(original) + r'(?![A-Za-z0-9])',
+            re.IGNORECASE,
+        )
+        candidate, count = pattern.subn(
+            _match_case(original, replacement), sentence, count=1
+        )
+        if count and candidate.casefold() != sentence.casefold():
+            statement = candidate
+            explanation = f'Not quite — the notes say "{sentence[:220]}".'
+    if statement is None:
+        statement = (
+            'It is not true that '
+            + sentence[:1].lower()
+            + sentence[1:]
+        )
     return {
         'question_type': 'true_false',
         'question_text': f'True or False: {statement}',
         'options': ['True', 'False'],
-        'correct_answer': answer,
-        'explanation': expl,
+        'correct_answer': 'False',
+        'explanation': explanation,
         'order': i,
     }
 
 
-def _make_short(sentence, i):
+def _make_short(sentence, i, variant=0):
+    prompt = _SHORT_PROMPTS[variant % len(_SHORT_PROMPTS)]
     return {
         'question_type': 'short_answer',
-        'question_text': f'In your own words, explain: "{sentence[:220]}"',
+        'question_text': prompt.format(sentence[:220]),
         'options': [],
         'correct_answer': sentence[:300],
         'explanation': 'Compare your answer against the reference statement above.',
@@ -497,13 +1066,11 @@ def _make_short(sentence, i):
     }
 
 
-def _make_essay(sentence, i):
+def _make_essay(sentence, i, variant=0):
+    prompt = _ESSAY_PROMPTS[variant % len(_ESSAY_PROMPTS)]
     return {
         'question_type': 'essay',
-        'question_text': (
-            'Discuss the significance of the following concept and give an example: '
-            f'"{sentence[:220]}"'
-        ),
+        'question_text': prompt.format(sentence[:220]),
         'options': [],
         'correct_answer': '',
         'explanation': 'A strong answer defines the concept, explains why it matters, and gives an example.',

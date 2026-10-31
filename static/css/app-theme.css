@@ -612,11 +612,6 @@ html {
   letter-spacing: 0.07em;
 }
 
-.attendance-radio:checked {
-  background-color: var(--tblr-primary);
-  border-color: var(--tblr-primary);
-}
-
 .pagination .page-link {
   border-radius: var(--tblr-border-radius-sm);
 }
