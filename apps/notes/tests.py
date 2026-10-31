@@ -296,6 +296,29 @@ class AIProviderTests(TestCase):
         # No keys in test env -> local.
         self.assertEqual(result['provider'], 'local')
 
+    @override_settings(
+        AI_PROVIDER='local',
+        OPENAI_API_KEY='configured-openai-key',
+        GEMINI_API_KEY='configured-gemini-key',
+        OPENROUTER_API_KEY='configured-openrouter-key',
+    )
+    def test_auto_with_local_provider_setting_skips_cloud_providers(self):
+        from unittest.mock import patch
+        from apps.notes.services import generate_quiz
+
+        with patch(
+            'apps.notes.services._try_provider',
+            side_effect=AssertionError('Offline generation must not call a provider.'),
+        ) as try_provider:
+            result = generate_quiz(
+                'Photosynthesis converts light energy into chemical energy. ' * 5,
+                provider='auto',
+            )
+
+        self.assertEqual(result['provider'], 'local')
+        self.assertTrue(result['questions'])
+        try_provider.assert_not_called()
+
     def test_local_mcq_choices_are_uppercase_and_unique(self):
         from apps.notes.services import generate_quiz
         source = (

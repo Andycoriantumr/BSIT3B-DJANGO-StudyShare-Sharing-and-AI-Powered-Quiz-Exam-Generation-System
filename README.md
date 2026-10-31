@@ -135,7 +135,10 @@ OPENROUTER_API_KEY=
 
 The chat prefers **Gemini → OpenRouter → OpenAI**, then falls back to the
 offline note assistant. Set `AI_PROVIDER=gemini` (or another provider) to pin
-one explicitly. Gemini requests use the `x-goog-api-key` header and disable
+one explicitly. Set `AI_PROVIDER=local` to force quiz requests that use
+`provider=auto` through the offline generator without waiting on cloud
+providers. An explicitly selected provider still takes precedence.
+Gemini requests use the `x-goog-api-key` header and disable
 thinking so the full output budget goes to the visible answer. You can also
 export the same variables in your shell instead of using `.env`.
 

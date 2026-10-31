@@ -3,6 +3,7 @@
 Strategy (no extra dependencies, stdlib urllib only):
 - provider="auto" (default): try OpenRouter -> OpenAI -> Gemini (whichever has
   an API key configured), then fall back to the deterministic local generator.
+  AI_PROVIDER=local forces auto requests to use the local generator immediately.
 - provider="openai" / "gemini" / "openrouter": try that provider, fall back to
   local on any failure so demos never break.
 - provider="local": always use the offline generator.
@@ -183,6 +184,8 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
     provider = (provider or 'auto').strip().lower()
     if provider not in VALID_PROVIDERS:
         provider = 'auto'
+    if provider == 'auto' and _cfg('AI_PROVIDER', 'auto').lower() == 'local':
+        provider = 'local'
     num_questions = max(1, min(int(num_questions or 5), 50))
     cleaned = (source_text or '').strip()
     if len(cleaned) < 40:
