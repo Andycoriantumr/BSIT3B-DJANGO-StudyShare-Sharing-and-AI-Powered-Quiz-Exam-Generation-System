@@ -233,7 +233,13 @@ def quiz_generate(request, pk):
         provider = 'auto'
 
     source = get_note_source_text(note)
-    result = generate_quiz(source, num_questions=num, question_type=qtype, provider=provider)
+    result = generate_quiz(
+        source,
+        num_questions=num,
+        question_type=qtype,
+        provider=provider,
+        user=request.user,
+    )
     quiz = _create_quiz_set(
         note, request.user,
         f'{qtype.replace("_", " ").title()} Quiz — {note.title[:60]}',
@@ -477,7 +483,13 @@ def exam_builder(request):
             return redirect('notes:exam_builder')
 
         source = build_exam_source(notes)
-        result = generate_quiz(source, num_questions=num, question_type=qtype, provider=provider)
+        result = generate_quiz(
+            source,
+            num_questions=num,
+            question_type=qtype,
+            provider=provider,
+            user=request.user,
+        )
         label = subject or 'Mixed Subjects'
         quiz = _create_quiz_set(
             notes[0], request.user,
@@ -548,7 +560,7 @@ def exam_bulk_generate(request):
         try:
             result = generate_quiz(
                 get_note_source_text(note), num_questions=per_note,
-                question_type=qtype, provider=provider)
+                question_type=qtype, provider=provider, user=request.user)
             _create_quiz_set(
                 note, request.user,
                 f'{qtype.replace("_", " ").title()} Quiz — {note.title[:60]}',

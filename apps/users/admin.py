@@ -22,9 +22,13 @@ class GuestAwareUserAdmin(BaseUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'role', 'is_guest', 'created_at')
+    list_display = ('user', 'role', 'is_guest', 'openrouter_key_configured', 'created_at')
     list_filter = ('role', 'is_guest')
     search_fields = ('user__username', 'user__email')
+
+    @admin.display(boolean=True, description='OpenRouter key')
+    def openrouter_key_configured(self, obj):
+        return obj.has_openrouter_key
 
     def get_queryset(self, request):
         return super().get_queryset(request).exclude(is_guest=True)

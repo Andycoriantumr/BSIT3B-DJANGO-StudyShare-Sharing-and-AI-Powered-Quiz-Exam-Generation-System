@@ -82,7 +82,7 @@ def upgrade_guest_user(user, *, username, first_name, last_name, email,
         profile = ensure_profile(user)
         profile.is_guest = False
         profile.role = Profile.ROLE_STUDENT
-        profile.save(update_fields=['is_guest', 'role'])
+        profile.save(update_fields=['is_guest', 'role', 'updated_at'])
         # Drop the old guest profile from the reverse OneToOne cache.
         user.refresh_from_db()
     return user

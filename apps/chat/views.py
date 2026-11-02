@@ -179,10 +179,10 @@ def _safe_reply(user, conversation, content, think=False):
         }
 
 
-def _safe_attachment_questions(message, question_count):
+def _safe_attachment_questions(message, question_count, user):
     try:
         return generate_attachment_questions(
-            message, num_questions=question_count
+            message, num_questions=question_count, user=user
         )
     except Exception:
         return {
@@ -253,7 +253,9 @@ def start_chat(request):
     )
     _store_chat_attachments(user_message, attachments)
     if attachments:
-        reply = _safe_attachment_questions(user_message, question_count)
+        reply = _safe_attachment_questions(
+            user_message, question_count, request.user
+        )
     else:
         reply = _safe_reply(request.user, conversation, content, think=think)
     assistant = _assistant_message(conversation, reply)
@@ -409,7 +411,9 @@ def send_message(request, pk):
     )
     _store_chat_attachments(user_message, attachments)
     if attachments:
-        reply = _safe_attachment_questions(user_message, question_count)
+        reply = _safe_attachment_questions(
+            user_message, question_count, request.user
+        )
     else:
         reply = _safe_reply(request.user, conversation, content, think=think)
     assistant = _assistant_message(conversation, reply)

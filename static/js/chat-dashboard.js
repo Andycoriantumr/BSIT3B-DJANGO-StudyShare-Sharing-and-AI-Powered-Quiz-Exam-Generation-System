@@ -8,7 +8,6 @@
   }
 
   var COLLAPSE_KEY = "studyshare-sidebar-collapsed";
-  var PROMO_KEY = "studyshare-promo-dismissed";
   var toastEl = document.getElementById("ssToast");
   var toastTimer = null;
 
@@ -221,35 +220,6 @@
       if (event.target === offerDialog) {
         offerDialog.close();
       }
-    });
-  }
-
-  /* ------------------------------------------------------------- promo */
-
-  var promo = document.getElementById("ssPromo");
-  var promoClose = document.querySelector("[data-ss-promo-close]");
-
-  if (promo) {
-    try {
-      if (window.localStorage.getItem(PROMO_KEY) === "1") {
-        promo.hidden = true;
-      }
-    } catch (error) {
-      /* Ignore storage errors. */
-    }
-  }
-
-  if (promo && promoClose) {
-    promoClose.addEventListener("click", function () {
-      promo.classList.add("is-hiding");
-      try {
-        window.localStorage.setItem(PROMO_KEY, "1");
-      } catch (error) {
-        /* Ignore storage errors. */
-      }
-      window.setTimeout(function () {
-        promo.hidden = true;
-      }, 180);
     });
   }
 

@@ -180,7 +180,7 @@ class ChatWorkflowTests(TestCase):
         self.assertEqual(len(assistant.quiz_data), 1)
         self.assertEqual(assistant.quiz_data[0]['correct_answer'], 'ATP')
         mocked_questions.assert_called_once_with(
-            user_message, num_questions=25
+            user_message, num_questions=25, user=self.user
         )
         self.addCleanup(attachment.file.delete, save=False)
 

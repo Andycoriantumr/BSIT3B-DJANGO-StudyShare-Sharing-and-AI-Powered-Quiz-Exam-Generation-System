@@ -138,9 +138,22 @@ offline note assistant. Set `AI_PROVIDER=gemini` (or another provider) to pin
 one explicitly. Set `AI_PROVIDER=local` to force quiz requests that use
 `provider=auto` through the offline generator without waiting on cloud
 providers. An explicitly selected provider still takes precedence.
+
 Gemini requests use the `x-goog-api-key` header and disable
 thinking so the full output budget goes to the visible answer. You can also
 export the same variables in your shell instead of using `.env`.
+
+### Per-user OpenRouter keys
+
+Each user profile can store its own OpenRouter API key. Admins can set or
+clear a user's personal key from **User Management**; blank profiles fall back
+to the site-wide `OPENROUTER_API_KEY`, and personal keys take priority when
+both are set.
+
+The site-wide key is never copied into profiles automatically. This matters
+because the local `SQL/db.sqlite3` is tracked in this repository: keeping the
+secret in `.env` (gitignored) prevents it from being committed with the
+database.
 
 
 ## BSIT Class Project Concept Paper

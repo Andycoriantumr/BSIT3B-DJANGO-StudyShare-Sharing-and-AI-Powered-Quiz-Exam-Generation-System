@@ -59,7 +59,8 @@ class Command(BaseCommand):
             try:
                 result = generate_quiz(
                     get_note_source_text(note), num_questions=per_note,
-                    question_type=options['question_type'], provider=options['provider'])
+                    question_type=options['question_type'], provider=options['provider'],
+                    user=owner)
                 _create_quiz_set(
                     note, owner,
                     f"{options['question_type'].replace('_', ' ').title()} Quiz — {note.title[:60]}",

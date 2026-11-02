@@ -94,6 +94,7 @@
                         <th>Joined</th>
                         <th>Status</th>
                         <th>Role</th>
+                        <th>OpenRouter</th>
                         <th class="w-1">Actions</th>
                     </tr>
                 </thead>
@@ -135,6 +136,15 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if u.profile.has_openrouter_key %}
+                            <span class="badge bg-success-lt text-success" title="This user has a personal OpenRouter API key.">Key set</span>
+                            {% elif site_has_openrouter_key %}
+                            <span class="badge bg-info-lt text-info" title="This user will use the site-wide OpenRouter API key.">Site key</span>
+                            {% else %}
+                            <span class="badge bg-secondary-lt text-secondary">Not set</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             <div class="d-flex gap-1">
                                 <a href="#"
                                    class="btn btn-ghost-secondary btn-icon btn-sm"
@@ -149,6 +159,7 @@
                                    data-active="{{ u.is_active|yesno:'true,false' }}"
                                    data-staff="{{ u.is_staff|yesno:'true,false' }}"
                                    data-role="{{ u.profile.role }}"
+                                   data-has-key="{{ u.profile.has_openrouter_key|yesno:'true,false' }}"
                                    title="Edit">
                                     <i class="fas fa-pen text-primary"></i>
                                 </a>
@@ -166,7 +177,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="empty py-5">
                                 <div class="empty-icon">
                                     <i class="fas fa-users fa-2x text-muted"></i>
@@ -250,6 +261,21 @@
                             <label class="form-label">Email</label>
                             <input type="email" name="email" id="edit_email" class="form-control">
                         </div>
+                        <div class="col-12">
+                            <label class="form-label">OpenRouter API Key</label>
+                            <input type="password" name="openrouter_api_key" id="edit_openrouter_api_key"
+                                   class="form-control" autocomplete="off" placeholder="sk-or-v1-...">
+                            <small class="form-hint" id="edit_openrouter_hint">
+                                Leave blank to use the site-wide key.
+                            </small>
+                            <div class="form-check mt-2 d-none" id="edit_clear_openrouter_wrap">
+                                <input class="form-check-input" type="checkbox"
+                                       name="clear_openrouter_api_key" id="edit_clear_openrouter_api_key" value="1">
+                                <label class="form-check-label text-danger" for="edit_clear_openrouter_api_key">
+                                    Remove this user's personal key
+                                </label>
+                            </div>
+                        </div>
                         <div class="col-6">
                             <label class="form-label">Status</label>
                             <div class="form-check form-switch mt-1">
@@ -312,6 +338,10 @@
     const passwordHint    = document.getElementById('edit_password_hint');
     const modalTitle       = document.getElementById('editUserModalTitle');
     const usernameInput   = document.getElementById('edit_username');
+    const openrouterInput = document.getElementById('edit_openrouter_api_key');
+    const openrouterHint  = document.getElementById('edit_openrouter_hint');
+    const clearKeyWrap    = document.getElementById('edit_clear_openrouter_wrap');
+    const clearKeyInput   = document.getElementById('edit_clear_openrouter_api_key');
 
     let deleteTargetId = null;
 
@@ -358,12 +388,24 @@
             document.getElementById('edit_is_active').checked = btn.dataset.active === 'true';
             document.getElementById('edit_is_staff').checked  = btn.dataset.staff === 'true';
             document.getElementById('edit_role').value = btn.dataset.role || 'student';
+
+            const hasKey = btn.dataset.hasKey === 'true';
+            openrouterInput.value = '';
+            clearKeyInput.checked = false;
+            clearKeyWrap.classList.toggle('d-none', !hasKey);
+            openrouterHint.textContent = hasKey
+                ? 'A personal key is configured. Leave blank to keep it.'
+                : 'No personal key yet. Leave blank to use the site-wide key.';
         } else {
             modalTitle.textContent = 'Add User';
             document.getElementById('edit_id').value = '';
             passwordHint.classList.add('d-none');
             passwordInput.required = true;
             document.getElementById('edit_is_active').checked = true;
+            openrouterInput.value = '';
+            clearKeyInput.checked = false;
+            clearKeyWrap.classList.add('d-none');
+            openrouterHint.textContent = 'Leave blank to use the site-wide key.';
         }
     });
 

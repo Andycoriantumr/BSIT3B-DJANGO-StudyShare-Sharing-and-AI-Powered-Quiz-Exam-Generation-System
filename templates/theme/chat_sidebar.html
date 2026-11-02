@@ -32,7 +32,7 @@
         <span class="ss-nav-label">Uploaded notes</span>
       </a>
       
-      <a class="ss-nav-item {% if request.resolver_match.url_name == 'exam_list' or request.resolver_match.url_name == 'exam_builder' or request.resolver_match.url_name == 'quiz_detail' or request.resolver_match.url_name == 'quiz_take' or request.resolver_match.url_name == 'attempt_detail' %}is-active{% endif %}"
+      <a class="ss-nav-item {% if request.resolver_match.url_name == 'exam_list' or request.resolver_match.url_name == 'quiz_detail' or request.resolver_match.url_name == 'quiz_take' or request.resolver_match.url_name == 'attempt_detail' %}is-active{% endif %}"
          href="{% url 'notes:exam_list' %}" title="My quizzes and exams">
         <svg class="ss-icon ss-nav-icon"><use href="#icon-file-text"></use></svg>
         <span class="ss-nav-label">My quizzes</span>

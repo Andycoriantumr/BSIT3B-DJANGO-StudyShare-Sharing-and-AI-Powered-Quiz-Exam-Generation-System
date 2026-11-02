@@ -1397,77 +1397,7 @@ button.ss-suggestion {
   background: #3d3d3d;
 }
 
-/* ----------------------------------------------------------------- promo */
-
-.ss-promo {
-  position: relative;
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 13px;
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 14px 36px 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 16px;
-  background: var(--ss-surface-raised);
-  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.ss-promo.is-hiding {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.ss-promo[hidden] {
-  display: none;
-}
-
-.ss-promo-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 11px;
-  background: linear-gradient(135deg, rgba(46, 109, 180, 0.42) 0%, rgba(139, 92, 246, 0.32) 100%);
-  color: #cfe2f8;
-}
-
-.ss-promo-icon .ss-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.ss-promo-copy {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding-right: 8px;
-}
-
-.ss-promo-copy strong {
-  display: block;
-  margin-bottom: 2px;
-  color: #f0f0f0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ss-promo-copy p {
-  margin: 0;
-  color: #9a9a9a;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.ss-promo-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
+/* ------------------------------------------------------------------ buttons */
 
 .ss-btn {
   display: inline-flex;
@@ -1495,42 +1425,6 @@ button.ss-suggestion {
 .ss-btn-ghost:hover {
   border-color: rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.06);
-}
-
-.ss-btn-light {
-  background: #f2f2f2;
-  color: #101010;
-}
-
-.ss-btn-light:hover {
-  background: #ffffff;
-}
-
-.ss-promo-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #858585;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.ss-promo-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-}
-
-.ss-promo-close .ss-icon {
-  width: 13px;
-  height: 13px;
 }
 
 /* ---------------------------------------------------------- chat thread */
@@ -2640,23 +2534,6 @@ button.ss-suggestion {
 
   .ss-snapshot {
     gap: 8px 10px;
-  }
-
-  .ss-promo {
-    flex-wrap: wrap;
-    padding: 14px;
-  }
-
-  .ss-promo-copy {
-    padding-right: 24px;
-  }
-
-  .ss-promo-actions {
-    width: 100%;
-  }
-
-  .ss-promo-actions .ss-btn {
-    flex: 1;
   }
 
   .ss-offer-pill {

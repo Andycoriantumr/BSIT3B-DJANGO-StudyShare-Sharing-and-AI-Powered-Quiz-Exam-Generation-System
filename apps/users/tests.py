@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import authenticate, get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -260,3 +260,103 @@ class GuestAdminVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['users_total'], 1)
         self.assertEqual(response.context['by_role'], {'admin': 1})
+
+
+@override_settings(OPENROUTER_API_KEY='site-openrouter-key')
+class OpenRouterProfileKeyTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username='keyadmin', password='adminpass123'
+        )
+        self.admin.profile.role = Profile.ROLE_ADMIN
+        self.admin.profile.save(update_fields=['role', 'updated_at'])
+        self.client.force_login(self.admin)
+
+    def test_new_registered_user_uses_site_key_without_storing_copy(self):
+        user = User.objects.create_user(
+            username='newstudent', password='studentpass123'
+        )
+
+        self.assertEqual(user.profile.openrouter_api_key, '')
+        self.assertFalse(user.profile.has_openrouter_key)
+        self.assertEqual(
+            user.profile.get_openrouter_api_key(), 'site-openrouter-key'
+        )
+
+    def test_guest_uses_site_key_without_storing_a_copy(self):
+        guest = create_guest_user()
+
+        self.assertEqual(guest.profile.openrouter_api_key, '')
+        self.assertEqual(
+            guest.profile.get_openrouter_api_key(), 'site-openrouter-key'
+        )
+        self.assertTrue(guest.profile.has_effective_openrouter_key)
+
+    def test_personal_key_takes_priority_for_ai_calls(self):
+        from apps.notes.services import get_openrouter_config
+
+        user = User.objects.create_user(
+            username='personalkey', password='studentpass123'
+        )
+        user.profile.openrouter_api_key = 'sk-or-v1-personal'
+        user.profile.save(update_fields=['openrouter_api_key', 'updated_at'])
+
+        self.assertEqual(
+            get_openrouter_config(user)[0], 'sk-or-v1-personal'
+        )
+        self.assertEqual(
+            get_openrouter_config()[0], 'site-openrouter-key'
+        )
+
+    def test_user_management_can_set_and_clear_personal_key(self):
+        response = self.client.post(reverse('users:user_save_ajax'), {
+            'username': 'manageduser',
+            'first_name': 'Managed',
+            'last_name': 'User',
+            'email': 'managed@example.com',
+            'password': 'managedpass123',
+            'is_active': 'true',
+            'is_staff': 'false',
+            'role': Profile.ROLE_STUDENT,
+        })
+        self.assertEqual(response.status_code, 200)
+        managed = User.objects.get(username='manageduser')
+        self.assertEqual(managed.profile.openrouter_api_key, '')
+        self.assertEqual(
+            managed.profile.get_openrouter_api_key(), 'site-openrouter-key'
+        )
+
+        response = self.client.post(reverse('users:user_save_ajax'), {
+            'id': managed.pk,
+            'username': 'manageduser',
+            'first_name': 'Managed',
+            'last_name': 'User',
+            'email': 'managed@example.com',
+            'is_active': 'true',
+            'is_staff': 'false',
+            'role': Profile.ROLE_STUDENT,
+            'openrouter_api_key': 'sk-or-v1-personal',
+        })
+        self.assertEqual(response.status_code, 200)
+        managed.profile.refresh_from_db()
+        self.assertEqual(
+            managed.profile.openrouter_api_key, 'sk-or-v1-personal'
+        )
+
+        response = self.client.post(reverse('users:user_save_ajax'), {
+            'id': managed.pk,
+            'username': 'manageduser',
+            'first_name': 'Managed',
+            'last_name': 'User',
+            'email': 'managed@example.com',
+            'is_active': 'true',
+            'is_staff': 'false',
+            'role': Profile.ROLE_STUDENT,
+            'clear_openrouter_api_key': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        managed.profile.refresh_from_db()
+        self.assertEqual(managed.profile.openrouter_api_key, '')
+        self.assertEqual(
+            managed.profile.get_openrouter_api_key(), 'site-openrouter-key'
+        )

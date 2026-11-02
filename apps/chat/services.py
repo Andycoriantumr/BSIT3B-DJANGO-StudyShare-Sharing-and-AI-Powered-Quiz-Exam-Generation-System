@@ -210,7 +210,7 @@ def generate_reply(user, conversation, user_message, think=False):
 
     for provider in _provider_order():
         try:
-            content = _call_provider(provider, system_prompt, messages)
+            content = _call_provider(provider, system_prompt, messages, user=user)
         except Exception as error:
             logger.warning('Chat provider %s failed: %s', provider, error)
             continue
@@ -296,7 +296,7 @@ def _read_chat_file_text(attachment):
 
 
 def generate_attachment_questions(
-    message, num_questions=QUESTIONS_PER_UPLOAD
+    message, num_questions=QUESTIONS_PER_UPLOAD, user=None
 ):
     """Generate an answerable practice quiz from attached chat files."""
     num_questions = normalize_question_count(num_questions)
@@ -328,6 +328,7 @@ def generate_attachment_questions(
         num_questions=num_questions,
         question_type='mcq',
         provider='auto',
+        user=user,
     )
     questions = result.get('questions') or []
     if not questions:
@@ -491,7 +492,7 @@ def _display_quiz_answer(expected, options):
 # ---------------------------------------------------------------------------
 
 
-def _call_provider(name, system_prompt, messages):
+def _call_provider(name, system_prompt, messages, user=None):
     if name == 'openai':
         api_key, model = get_openai_config()
         if not api_key:
@@ -506,7 +507,7 @@ def _call_provider(name, system_prompt, messages):
         )
 
     if name == 'openrouter':
-        api_key, model = get_openrouter_config()
+        api_key, model = get_openrouter_config(user)
         if not api_key:
             raise ValueError('missing OPENROUTER_API_KEY')
         extra_headers = {}

@@ -51,12 +51,6 @@
           </a>
         </li>
         <li class="nav-item">
-          <a class="nav-link {% if request.resolver_match.url_name == 'exam_builder' or request.resolver_match.url_name == 'exam_list' %}active{% endif %}" href="{% url 'notes:exam_builder' %}">
-            <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-magic"></i></span>
-            <span class="nav-link-title">Exam Generator</span>
-          </a>
-        </li>
-        <li class="nav-item">
           <a class="nav-link {% if request.resolver_match.url_name == 'my_progress' %}active{% endif %}" href="{% url 'notes:my_progress' %}">
             <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="nav-icon fas fa-chart-line"></i></span>
             <span class="nav-link-title">My Progress</span>

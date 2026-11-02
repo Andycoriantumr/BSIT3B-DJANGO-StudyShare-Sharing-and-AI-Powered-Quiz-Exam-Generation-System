@@ -13,6 +13,9 @@ Env / settings keys:
   GEMINI_API_KEY / GEMINI_MODEL (default gemini-flash-latest)
   OPENROUTER_API_KEY / OPENROUTER_MODEL (default openai/gpt-4o-mini)
   OPENROUTER_SITE_URL / OPENROUTER_APP_NAME (optional OpenRouter headers)
+
+OpenRouter calls prefer the signed-in user's personal key (stored on their
+Profile) and fall back to the site-wide OPENROUTER_API_KEY when it is blank.
 """
 
 from functools import lru_cache
@@ -64,8 +67,25 @@ def get_gemini_config():
     return _cfg('GEMINI_API_KEY'), (_cfg('GEMINI_MODEL', 'gemini-flash-latest') or 'gemini-flash-latest')
 
 
-def get_openrouter_config():
-    return _cfg('OPENROUTER_API_KEY'), (_cfg('OPENROUTER_MODEL', 'openai/gpt-4o-mini') or 'openai/gpt-4o-mini')
+def get_user_openrouter_key(user):
+    """Return the signed-in user's OpenRouter key, if they have one."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return ''
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return ''
+    return (getattr(profile, 'openrouter_api_key', '') or '').strip()
+
+
+def get_openrouter_config(user=None):
+    """Return the effective OpenRouter key and model for a user.
+
+    A user's saved key takes priority; otherwise the site-wide environment
+    setting is used.
+    """
+    api_key = get_user_openrouter_key(user) or _cfg('OPENROUTER_API_KEY')
+    model = _cfg('OPENROUTER_MODEL', 'openai/gpt-4o-mini') or 'openai/gpt-4o-mini'
+    return api_key, model
 
 
 def get_note_source_text(note, max_chars=MAX_SOURCE_CHARS):
@@ -179,7 +199,7 @@ def build_exam_source(notes, max_chars=MAX_SOURCE_CHARS):
     return combined
 
 
-def generate_quiz(source_text, num_questions=5, question_type='mixed', provider='auto'):
+def generate_quiz(source_text, num_questions=5, question_type='mixed', provider='auto', user=None):
     """Public entry: try cloud provider(s), fall back to local generator."""
     provider = (provider or 'auto').strip().lower()
     if provider not in VALID_PROVIDERS:
@@ -202,7 +222,9 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
     # Explicit provider request: try it, fall back to local.
     if provider in ('openai', 'gemini', 'openrouter'):
         try:
-            questions = _try_provider(provider, cleaned, num_questions, question_type)
+            questions = _try_provider(
+                provider, cleaned, num_questions, question_type, user=user
+            )
             if questions:
                 return _quiz_result(questions, provider)
         except Exception:
@@ -214,7 +236,9 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
     # auto: OpenRouter -> OpenAI -> Gemini -> local.
     for name in ('openrouter', 'openai', 'gemini'):
         try:
-            questions = _try_provider(name, cleaned, num_questions, question_type)
+            questions = _try_provider(
+                name, cleaned, num_questions, question_type, user=user
+            )
             if questions:
                 return _quiz_result(questions, name)
         except Exception:
@@ -224,7 +248,7 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
     )
 
 
-def _try_provider(name, source_text, num_questions, question_type):
+def _try_provider(name, source_text, num_questions, question_type, user=None):
     if name == 'openai':
         api_key, model = get_openai_config()
         if not api_key:
@@ -236,7 +260,7 @@ def _try_provider(name, source_text, num_questions, question_type):
             raise ValueError('missing GEMINI_API_KEY')
         return _generate_with_gemini(source_text, num_questions, question_type, api_key, model)
     if name == 'openrouter':
-        api_key, model = get_openrouter_config()
+        api_key, model = get_openrouter_config(user)
         if not api_key:
             raise ValueError('missing OPENROUTER_API_KEY')
         return _generate_with_openrouter(source_text, num_questions, question_type, api_key, model)

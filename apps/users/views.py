@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Q
 
-from apps.users.models import Profile
+from apps.users.models import Profile, site_openrouter_api_key
 from apps.users.roles import can_admin, get_user_role
 
 
@@ -50,6 +50,7 @@ def user_list_page(request):
         'users': users,
         'query': query,
         'role_filter': role,
+        'site_has_openrouter_key': bool(site_openrouter_api_key()),
     })
 
 
@@ -73,6 +74,7 @@ def user_list_ajax(request):
             'is_active': u.is_active,
             'date_joined': u.date_joined,
             'role': get_user_role(u),
+            'has_openrouter_key': u.profile.has_openrouter_key,
         })
     return JsonResponse({
         "data":     data,
@@ -98,6 +100,7 @@ def user_get_ajax(request, pk):
         "is_staff":   user.is_staff,
         "is_active":  user.is_active,
         "role":       get_user_role(user),
+        "has_openrouter_key": user.profile.has_openrouter_key,
     })
 
 
@@ -155,6 +158,13 @@ def user_save_ajax(request):
 
     profile, _ = Profile.objects.get_or_create(user=user)
     profile.role = role
+
+    submitted_key = (request.POST.get("openrouter_api_key") or "").strip()
+    clear_key = request.POST.get("clear_openrouter_api_key") == "1"
+    if submitted_key:
+        profile.openrouter_api_key = submitted_key
+    elif clear_key:
+        profile.openrouter_api_key = ""
     profile.save()
 
     messages.success(
@@ -172,6 +182,7 @@ def user_save_ajax(request):
         "is_staff": user.is_staff,
         "is_active": user.is_active,
         "role": role,
+        "has_openrouter_key": profile.has_openrouter_key,
     })
 
 

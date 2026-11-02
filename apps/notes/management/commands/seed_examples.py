@@ -210,7 +210,8 @@ class Command(BaseCommand):
                 if note.quiz_sets.exists():
                     continue
                 result = generate_quiz(
-                    note.content, num_questions=5, question_type='mixed', provider='local')
+                    note.content, num_questions=5, question_type='mixed',
+                    provider='local', user=owner)
                 _create_quiz_set(
                     note, owner, f'Mixed Quiz — {note.title[:60]}',
                     5, 'mixed', result['provider'], result['questions'],
@@ -230,7 +231,7 @@ class Command(BaseCommand):
                     continue
                 result = generate_quiz(
                     build_exam_source(bundle), num_questions=20,
-                    question_type='mixed', provider='local')
+                    question_type='mixed', provider='local', user=owner)
                 _create_quiz_set(
                     bundle[0], owner, f'Exam — {label} (20 Qs, {len(bundle)} sources)',
                     20, 'mixed', result['provider'], result['questions'],

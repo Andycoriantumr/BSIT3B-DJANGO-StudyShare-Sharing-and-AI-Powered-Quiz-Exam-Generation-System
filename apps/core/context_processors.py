@@ -10,7 +10,7 @@ PROVIDER_LABELS = {
 }
 
 
-def _active_ai_provider():
+def _active_ai_provider(user=None):
     """Return the provider chat will prefer, matching apps.chat.services."""
     from apps.notes.services import (
         get_gemini_config,
@@ -20,7 +20,7 @@ def _active_ai_provider():
 
     configured = {
         'gemini': bool(get_gemini_config()[0]),
-        'openrouter': bool(get_openrouter_config()[0]),
+        'openrouter': bool(get_openrouter_config(user)[0]),
         'openai': bool(get_openai_config()[0]),
     }
     preferred = (getattr(settings, 'AI_PROVIDER', 'auto') or 'auto').strip().lower()
@@ -42,7 +42,7 @@ def studyshare_shell(request):
     from apps.users.guests import display_identity, is_guest
 
     display_name, initials = display_identity(user)
-    ai_provider = _active_ai_provider()
+    ai_provider = _active_ai_provider(user)
 
     return {
         'display_name': display_name,
