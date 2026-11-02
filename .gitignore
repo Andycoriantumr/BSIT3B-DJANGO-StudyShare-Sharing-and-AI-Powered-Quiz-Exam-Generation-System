@@ -15,8 +15,7 @@ staticfiles/
 # Local database backups
 backups/
 
-# Environment / secrets (never commit API keys)
-.env
+# Environment / secrets
 .venv/
 venv/
 env/
