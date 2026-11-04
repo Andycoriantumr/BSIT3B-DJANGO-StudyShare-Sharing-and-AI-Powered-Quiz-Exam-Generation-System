@@ -7,6 +7,8 @@ Strategy (no extra dependencies, stdlib urllib only):
 - provider="openai" / "gemini" / "openrouter": try that provider, fall back to
   local on any failure so demos never break.
 - provider="local": always use the offline generator.
+- Large quizzes are generated in parallel batches and topped up locally so the
+  requested count is always returned.
 
 Env / settings keys:
   OPENAI_API_KEY / OPENAI_MODEL (default gpt-4o-mini)
@@ -18,6 +20,7 @@ OpenRouter calls prefer the signed-in user's personal key (stored on their
 Profile) and fall back to the site-wide OPENROUTER_API_KEY when it is blank.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import json
 import os
@@ -37,14 +40,20 @@ GENERIC_DISTRACTORS = [
 
 VALID_PROVIDERS = ('auto', 'local', 'openai', 'gemini', 'openrouter')
 
+MAX_QUESTIONS = 50
+# Keep each AI response comfortably inside the provider's output-token limit.
+# Large quizzes are generated in several smaller batches instead of one huge
+# response that models often truncate.
+MAX_QUESTIONS_PER_REQUEST = 30
+
 
 def _output_token_budget(num_questions):
-    """Give larger quizzes enough room for their JSON answer."""
-    return min(8192, max(2000, int(num_questions) * 180))
+    """Give each request enough room for its JSON answer."""
+    return min(8192, max(2000, int(num_questions) * 220))
 
 
-def _provider_timeout(num_questions, minimum=40, maximum=60):
-    return min(maximum, max(minimum, int(num_questions) * 2))
+def _provider_timeout(num_questions, minimum=75, maximum=180):
+    return min(maximum, max(minimum, int(num_questions) * 3))
 
 
 def _cfg(name, default=''):
@@ -157,10 +166,22 @@ def _read_pdf_text(note):
     return text[:8000]
 
 
-def _build_prompt(source_text, num_questions, question_type):
+def _build_prompt(source_text, num_questions, question_type, exclude=None):
+    exclusion = ''
+    if exclude:
+        existing = '\n'.join(
+            f'- {str(text).strip()[:160]}'
+            for text in list(exclude)[-30:]
+            if str(text).strip()
+        )
+        if existing:
+            exclusion = (
+                '\nDo NOT repeat or closely paraphrase these questions that '
+                f'were already generated:\n{existing}\n'
+            )
     return (
         'You generate quiz/exam review questions from study notes. '
-        f'Return STRICT JSON: a list of {num_questions} objects with keys: '
+        f'Return STRICT JSON: a list of exactly {num_questions} objects with keys: '
         'question_type (one of mcq, true_false, short_answer, essay), '
         'question_text, options (array of 4 strings for mcq, else []), '
         'correct_answer, explanation. '
@@ -168,19 +189,76 @@ def _build_prompt(source_text, num_questions, question_type):
         'make all four choices unique within the question, and do not reuse '
         'the same set of choices across questions. Never include both '
         '"ALL OF THE ABOVE" and "NONE OF THE ABOVE" in one question. '
-        f'Question mix requested: {question_type}. Keep questions grounded in the notes.\n\n'
+        f'Question mix requested: {question_type}. Keep questions grounded in the notes.\n'
+        f'{exclusion}\n'
         f'NOTES:\n{source_text[:8000]}'
     )
+
+
+def _decode_json_questions(content):
+    """Decode a quiz JSON payload, salvaging complete items if truncated."""
+    content = (content or '').strip()
+    if not content:
+        raise ValueError('empty quiz response')
+
+    decoder = json.JSONDecoder()
+    array_start = content.find('[')
+    object_start = content.find('{')
+    starts = []
+    if array_start != -1:
+        starts.append(array_start)
+    if object_start != -1 and (
+        array_start == -1 or object_start < array_start
+    ):
+        starts.append(object_start)
+    for start in starts:
+        try:
+            parsed, _ = decoder.raw_decode(content[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict) and isinstance(
+            parsed.get('questions'), list
+        ):
+            return parsed
+
+    # Models sometimes stop at their output-token limit mid-array. Recover
+    # every complete object so the caller can still use part of the response.
+    start = content.find('[')
+    if start != -1:
+        items = []
+        index = start + 1
+        while index < len(content):
+            while index < len(content) and content[index] in ' \t\r\n,':
+                index += 1
+            if index >= len(content) or content[index] == ']':
+                break
+            try:
+                item, index = decoder.raw_decode(content, index)
+            except json.JSONDecodeError:
+                break
+            if isinstance(item, dict):
+                items.append(item)
+        if items:
+            return items
+    raise ValueError('invalid quiz JSON')
 
 
 def _parse_json_list(content, num_questions):
     content = (content or '').strip()
     content = re.sub(r'^```(?:json)?\s*', '', content)
     content = re.sub(r'\s*```$', '', content)
-    parsed = json.loads(content)
-    if isinstance(parsed, dict) and 'questions' in parsed:
-        parsed = parsed['questions']
-    return [_normalize_q(q, i) for i, q in enumerate(parsed[:num_questions])]
+    parsed = _decode_json_questions(content)
+    if isinstance(parsed, dict):
+        parsed = parsed.get('questions') or []
+    if not isinstance(parsed, list):
+        raise ValueError('quiz JSON must be a list')
+    questions = [item for item in parsed if isinstance(item, dict)]
+    return [
+        _normalize_q(q, i)
+        for i, q in enumerate(questions[:num_questions])
+    ]
 
 
 def build_exam_source(notes, max_chars=MAX_SOURCE_CHARS):
@@ -200,13 +278,18 @@ def build_exam_source(notes, max_chars=MAX_SOURCE_CHARS):
 
 
 def generate_quiz(source_text, num_questions=5, question_type='mixed', provider='auto', user=None):
-    """Public entry: try cloud provider(s), fall back to local generator."""
+    """Public entry: try cloud provider(s), fall back to local generator.
+
+    The returned list always contains exactly ``num_questions`` questions
+    (clamped to 1-50). If a provider stops early, the remaining slots are
+    filled from the offline generator instead of returning a short quiz.
+    """
     provider = (provider or 'auto').strip().lower()
     if provider not in VALID_PROVIDERS:
         provider = 'auto'
     if provider == 'auto' and _cfg('AI_PROVIDER', 'auto').lower() == 'local':
         provider = 'local'
-    num_questions = max(1, min(int(num_questions or 5), 50))
+    num_questions = max(1, min(int(num_questions or 5), MAX_QUESTIONS))
     cleaned = (source_text or '').strip()
     if len(cleaned) < 40:
         cleaned = (
@@ -226,7 +309,12 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
                 provider, cleaned, num_questions, question_type, user=user
             )
             if questions:
-                return _quiz_result(questions, provider)
+                return _quiz_result(
+                    _complete_with_local(
+                        questions, cleaned, num_questions, question_type
+                    ),
+                    provider,
+                )
         except Exception:
             pass
         return _quiz_result(
@@ -240,7 +328,12 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
                 name, cleaned, num_questions, question_type, user=user
             )
             if questions:
-                return _quiz_result(questions, name)
+                return _quiz_result(
+                    _complete_with_local(
+                        questions, cleaned, num_questions, question_type
+                    ),
+                    name,
+                )
         except Exception:
             continue
     return _quiz_result(
@@ -248,31 +341,198 @@ def generate_quiz(source_text, num_questions=5, question_type='mixed', provider=
     )
 
 
+def _split_source(source_text, parts):
+    """Split source text into word-aligned chunks for parallel batches.
+
+    Short sources are reused whole so every batch still has enough context.
+    """
+    text = (source_text or '').strip()
+    parts = max(1, int(parts or 1))
+    if parts == 1 or len(text) < parts * 1200:
+        return [text] * parts
+
+    words = text.split()
+    chunk_size = max(1, len(words) // parts)
+    overlap = 20
+    chunks = []
+    for index in range(parts):
+        start = max(0, index * chunk_size - overlap) if index else 0
+        end = len(words) if index == parts - 1 else (index + 1) * chunk_size
+        chunks.append(' '.join(words[start:end]))
+    return chunks
+
+
 def _try_provider(name, source_text, num_questions, question_type, user=None):
+    """Call one provider, generating large quizzes as parallel batches.
+
+    Each initial batch sees a different slice of the notes, which keeps the
+    questions varied and cuts wall-clock time roughly in half for big quizzes.
+    If the batches still come up short, sequential calls (with the full source
+    and an exclusion list) fill the gap before the local generator tops up.
+    """
+    from django.db import close_old_connections
+
+    batch_count = max(
+        1,
+        (num_questions + MAX_QUESTIONS_PER_REQUEST - 1)
+        // MAX_QUESTIONS_PER_REQUEST,
+    )
+    sizes = []
+    remaining = num_questions
+    for _ in range(batch_count):
+        size = min(remaining, MAX_QUESTIONS_PER_REQUEST)
+        sizes.append(size)
+        remaining -= size
+    chunks = _split_source(source_text, batch_count)
+
+    def run_batch(index):
+        try:
+            return _try_provider_once(
+                name, chunks[index], sizes[index], question_type,
+                user=user, exclude=None,
+            )
+        finally:
+            close_old_connections()
+
+    if batch_count == 1:
+        results = [run_batch(0)]
+    else:
+        results = []
+        first_error = None
+        with ThreadPoolExecutor(max_workers=min(batch_count, 4)) as pool:
+            futures = [
+                pool.submit(run_batch, index)
+                for index in range(batch_count)
+            ]
+            for future in futures:
+                try:
+                    results.append(future.result())
+                except Exception as exc:
+                    if first_error is None:
+                        first_error = exc
+                    results.append([])
+        if first_error is not None and not any(results):
+            raise first_error
+
+    questions = []
+    seen = set()
+    for batch in results:
+        for question in batch or []:
+            key = _option_key(str(question.get('question_text', '')))
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            questions.append(question)
+            if len(questions) >= num_questions:
+                return questions[:num_questions]
+
+    # Sequential top-up: the full source plus exclusions avoids repeats.
+    attempts = 0
+    while len(questions) < num_questions and attempts < 3:
+        batch_size = min(
+            num_questions - len(questions), MAX_QUESTIONS_PER_REQUEST
+        )
+        exclude = [q.get('question_text', '') for q in questions]
+        try:
+            batch = _try_provider_once(
+                name, source_text, batch_size, question_type,
+                user=user, exclude=exclude,
+            )
+        except Exception:
+            break
+
+        added = 0
+        for question in batch or []:
+            key = _option_key(str(question.get('question_text', '')))
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            questions.append(question)
+            added += 1
+            if len(questions) >= num_questions:
+                break
+        attempts += 1
+        if not added:
+            break
+    return questions[:num_questions]
+
+
+def _try_provider_once(
+    name, source_text, num_questions, question_type, user=None, exclude=None
+):
     if name == 'openai':
         api_key, model = get_openai_config()
         if not api_key:
             raise ValueError('missing OPENAI_API_KEY')
-        return _generate_with_openai(source_text, num_questions, question_type, api_key, model)
+        return _generate_with_openai(
+            source_text, num_questions, question_type, api_key, model,
+            exclude=exclude,
+        )
     if name == 'gemini':
         api_key, model = get_gemini_config()
         if not api_key:
             raise ValueError('missing GEMINI_API_KEY')
-        return _generate_with_gemini(source_text, num_questions, question_type, api_key, model)
+        return _generate_with_gemini(
+            source_text, num_questions, question_type, api_key, model,
+            exclude=exclude,
+        )
     if name == 'openrouter':
         api_key, model = get_openrouter_config(user)
         if not api_key:
             raise ValueError('missing OPENROUTER_API_KEY')
-        return _generate_with_openrouter(source_text, num_questions, question_type, api_key, model)
+        return _generate_with_openrouter(
+            source_text, num_questions, question_type, api_key, model,
+            exclude=exclude,
+        )
     raise ValueError(f'unknown provider {name}')
+
+
+def _complete_with_local(questions, source_text, num_questions, question_type):
+    """Fill a short provider response so the quiz has the requested count."""
+    questions = list(questions or [])
+    if len(questions) >= num_questions:
+        return questions[:num_questions]
+
+    needed = num_questions - len(questions)
+    # Generate extra local candidates so duplicate prompts can be skipped.
+    local_questions = _generate_local(
+        source_text, max(needed * 2, needed), question_type
+    )
+    seen = {
+        _option_key(str(question.get('question_text', '')))
+        for question in questions
+    }
+    used_local = set()
+    for index, question in enumerate(local_questions):
+        if len(questions) >= num_questions:
+            break
+        key = _option_key(str(question.get('question_text', '')))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        used_local.add(index)
+        questions.append(question)
+
+    # Very short sources may not yield enough distinct prompts. Keep the
+    # requested count rather than returning a short quiz.
+    for index, question in enumerate(local_questions):
+        if len(questions) >= num_questions:
+            break
+        if index in used_local:
+            continue
+        used_local.add(index)
+        questions.append(question)
+    return questions[:num_questions]
 
 
 # ---------------------------------------------------------------------------
 # OpenAI (stdlib, no dependency)
 # ---------------------------------------------------------------------------
 
-def _generate_with_openai(source_text, num_questions, question_type, api_key, model):
-    prompt = _build_prompt(source_text, num_questions, question_type)
+def _generate_with_openai(
+    source_text, num_questions, question_type, api_key, model, exclude=None
+):
+    prompt = _build_prompt(source_text, num_questions, question_type, exclude)
     payload = json.dumps({
         'model': model,
         'messages': [
@@ -303,8 +563,12 @@ def _generate_with_openai(source_text, num_questions, question_type, api_key, mo
 # Gemini (Google Generative Language API, stdlib only)
 # ---------------------------------------------------------------------------
 
-def _generate_with_gemini(source_text, num_questions, question_type, api_key, model):
-    prompt = _build_prompt(source_text, num_questions, question_type) + (
+def _generate_with_gemini(
+    source_text, num_questions, question_type, api_key, model, exclude=None
+):
+    prompt = _build_prompt(
+        source_text, num_questions, question_type, exclude
+    ) + (
         '\nOutput ONLY a JSON array. No markdown, no explanation.'
     )
     # If a retired model name is configured, fall back to the rolling alias.
@@ -362,8 +626,10 @@ def _generate_with_gemini(source_text, num_questions, question_type, api_key, mo
 # OpenRouter (OpenAI-compatible Chat Completions, stdlib only)
 # ---------------------------------------------------------------------------
 
-def _generate_with_openrouter(source_text, num_questions, question_type, api_key, model):
-    prompt = _build_prompt(source_text, num_questions, question_type)
+def _generate_with_openrouter(
+    source_text, num_questions, question_type, api_key, model, exclude=None
+):
+    prompt = _build_prompt(source_text, num_questions, question_type, exclude)
     payload = json.dumps({
         'model': model,
         'messages': [
@@ -508,7 +774,7 @@ def _finalize_questions(questions):
             'question_type': qtype,
             'options': options,
             'correct_answer': answer,
-            'order': question.get('order', index),
+            'order': index,
         })
         finalized.append(question)
     return finalized

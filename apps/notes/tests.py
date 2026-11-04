@@ -484,6 +484,136 @@ class AIProviderTests(TestCase):
         self.assertEqual(result['provider'], 'gemini')
         self.assertEqual(result['questions'][0]['correct_answer'], 'B')
 
+    def test_short_provider_response_is_topped_up(self):
+        from unittest.mock import patch
+        from apps.notes import services as svc
+
+        provider_questions = [
+            {
+                'question_type': 'mcq',
+                'question_text': f'Provider Q{i}?',
+                'options': ['A', 'B', 'C', 'D'],
+                'correct_answer': 'A',
+                'explanation': '',
+            }
+            for i in range(3)
+        ]
+        source = 'Photosynthesis converts light energy into chemical energy. ' * 5
+
+        with patch.object(
+            svc, '_try_provider_once', return_value=provider_questions
+        ):
+            result = svc.generate_quiz(
+                source, num_questions=10, question_type='mcq',
+                provider='openrouter',
+            )
+
+        self.assertEqual(result['provider'], 'openrouter')
+        self.assertEqual(len(result['questions']), 10)
+        self.assertTrue(
+            result['questions'][0]['question_text'].startswith('Provider Q')
+        )
+
+    def test_large_quiz_is_generated_in_batches(self):
+        import threading
+        from unittest.mock import patch
+        from apps.notes import services as svc
+
+        calls = []
+        lock = threading.Lock()
+
+        def fake_provider(
+            name, source_text, num_questions, question_type,
+            user=None, exclude=None,
+        ):
+            with lock:
+                start = sum(calls)
+                calls.append(num_questions)
+            return [
+                {
+                    'question_type': 'mcq',
+                    'question_text': f'Batch Q{start + i}?',
+                    'options': ['A', 'B', 'C', 'D'],
+                    'correct_answer': 'A',
+                    'explanation': '',
+                }
+                for i in range(num_questions)
+            ]
+
+        with patch.object(
+            svc, '_try_provider_once', side_effect=fake_provider
+        ):
+            result = svc.generate_quiz(
+                'Some long enough source text. ' * 10,
+                num_questions=50,
+                question_type='mcq',
+                provider='openrouter',
+            )
+
+        self.assertEqual(len(result['questions']), 50)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(sorted(calls), [20, 30])
+        self.assertEqual(sum(calls), 50)
+
+    def test_parallel_batches_are_topped_up_when_short(self):
+        import threading
+        from unittest.mock import patch
+        from apps.notes import services as svc
+
+        lock = threading.Lock()
+        counter = {'value': 0}
+
+        def fake_provider(
+            name, source_text, num_questions, question_type,
+            user=None, exclude=None,
+        ):
+            with lock:
+                start = counter['value']
+                counter['value'] += num_questions
+            return [
+                {
+                    'question_type': 'mcq',
+                    'question_text': f'Short Q{start + i}?',
+                    'options': ['A', 'B', 'C', 'D'],
+                    'correct_answer': 'A',
+                    'explanation': '',
+                }
+                for i in range(max(0, num_questions - 5))
+            ]
+
+        with patch.object(
+            svc, '_try_provider_once', side_effect=fake_provider
+        ):
+            result = svc.generate_quiz(
+                'Some long enough source text. ' * 10,
+                num_questions=50,
+                question_type='mcq',
+                provider='openrouter',
+            )
+
+        texts = [q['question_text'] for q in result['questions']]
+        self.assertEqual(len(texts), 50)
+        self.assertEqual(len(set(texts)), 50)
+
+    def test_truncated_provider_json_is_salvaged(self):
+        from apps.notes.services import _parse_json_list
+
+        content = (
+            '[{"question_type":"mcq","question_text":"Q1?",'
+            '"options":["A","B"],"correct_answer":"A","explanation":""},'
+            '{"question_type":"mcq","question_text":"Q2?",'
+            '"options":["A","B"],"correct_answer":"A","explanation":""},'
+            '{"question_type":"mcq","question_text":"Q3?",'
+            '"options":["A"'
+        )
+
+        questions = _parse_json_list(content, 5)
+
+        self.assertEqual(
+            [question['question_text'] for question in questions],
+            ['Q1?', 'Q2?'],
+        )
+
     def test_quiz_generate_view_with_provider_param(self):
         self.client.force_login(self.user)
         resp = self.client.post(f'/notes/{self.note.pk}/quiz/generate/', {

@@ -224,7 +224,7 @@ def quiz_generate(request, pk):
         num = int(request.POST.get('num_questions', 5))
     except (TypeError, ValueError):
         num = 5
-    num = max(1, min(num, 20))
+    num = max(1, min(num, 50))
     qtype = request.POST.get('question_type', 'mixed')
     if qtype not in ('mixed', 'mcq', 'true_false', 'short_answer', 'essay'):
         qtype = 'mixed'
